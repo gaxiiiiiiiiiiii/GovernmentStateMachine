@@ -6,30 +6,38 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 
 Variable M R : finType.
+Definition currency := nat.
 
 
 Record state := mkState{
+    treasury : currency;    
     member : {set M};
     role : {set R};
     assignment : R -> {set M};
-    deliverator : R;
+    budget : R -> currency;
 }.
 
 Instance etaState : Settable state := 
-    settable! mkState <member; role; assignment; deliverator>.
+    settable! mkState <treasury; member; role; assignment; budget>.
 
 
 Inductive act  :=
     | assign : R -> M -> act
     | dismissal : R -> M -> act
+
     | add_mem : M -> act
     | del_mem : M -> act 
+
     | add_role : R -> act 
     | del_role : R -> act
+
+    | withdraw : currency -> act 
+    | deposit : currency -> act 
+    | allocate : currency -> R -> act
+
     | propose : act -> act.
 
-Variable deliverate : act -> state -> bool.
-
+Variable deliberate : act -> state -> bool.
 
 Fixpoint trans_  (a : act) (x : state)  :=
     match a with 
@@ -37,23 +45,29 @@ Fixpoint trans_  (a : act) (x : state)  :=
         x <| assignment ::= fun f => fun r' => if r == r' then m |: f r' else f r' |>
     | dismissal r m => 
         x <| assignment ::= fun f => fun r' => if r == r' then f r' :\ m else f r' |> 
+
     | add_mem m => x <| member ::= fun X => m |: X|>
     | del_mem m => x <| member ::= fun X => X :\ m|>
+
     | add_role r => x <| role ::= fun X => r |: X|> 
     | del_role r => x <| role ::= fun X => X :\ r|>
-    | propose a' => if deliverate a' x then trans_ a' x else x
+
+    | withdraw n => x <|treasury ::= plus n|>    
+    | deposit n => x <|treasury ::= minus n|>
+    | allocate n r => x <|treasury ::= minus n|> 
+                        <|budget ::= fun f => fun r' => if r == r' then f r + n else f r'|>
+
+    | propose a' => if deliberate a' x then trans_ a' x else x
     end.
 
 Definition trans a x y := y = trans_ a x.
 
 Inductive var :=
-| existsDeliveration : var
-| isAssigned : R -> M -> var
-| isMember : M -> var.
+    | isAssigned : R -> M -> var
+    | isMember : M -> var.
 
 Definition valuation (x : var) (s : state) : bool :=
     match x with 
-    | existsDeliveration => deliverator s \in role s
     | isAssigned r m => m \in assignment s r
     | isMember m => m \in member s
     end.
@@ -132,14 +146,16 @@ Definition liveness (good : form) :=
 *)
 Definition isDictator :=
     s |= Var (isMember m) → Var (isAssigned r m).
-    
+
 
 (*
-    任意の状態において、罷免提案が提出された直後にも罷免が履行されない
+    任意の状態において、mがrを罷免される提案がされた後の状態でmがrに就いている
      = 罷免提案が否決される
 *)
-Definition undismisalable :=   
+Definition undissmissible :=   
     s |= [propose (dismissal r m)](Var (isAssigned r m)).
+
+End properties.
 
 
 
