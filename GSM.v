@@ -1,12 +1,15 @@
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 From mathcomp Require Export all_ssreflect.
+Require Import Nat.
+
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 
 Variable M R : finType.
 Definition currency := nat.
+Definition timestamp := nat.
 
 
 Record state := mkState{
@@ -15,10 +18,11 @@ Record state := mkState{
     role : {set R};
     assignment : R -> {set M};
     budget : R -> currency;
+    expiration : R -> timestamp;
 }.
 
 Instance etaState : Settable state := 
-    settable! mkState <treasury; member; role; assignment; budget>.
+    settable! mkState <treasury; member; role; assignment; budget; expiration>.
 
 
 Inductive act  :=
@@ -35,9 +39,13 @@ Inductive act  :=
     | deposit : currency -> act 
     | allocate : currency -> R -> act
 
+    | set_expiration : R -> timestamp -> act
+
     | propose : act -> act.
 
 Variable deliberate : act -> state -> bool.
+
+Variable now : nat.
 
 Fixpoint trans_  (a : act) (x : state)  :=
     match a with 
@@ -57,6 +65,9 @@ Fixpoint trans_  (a : act) (x : state)  :=
     | allocate n r => x <|treasury ::= minus n|> 
                         <|budget ::= fun f => fun r' => if r == r' then f r + n else f r'|>
 
+    | set_expiration r n => 
+        x  <|budget ::= fun f => fun r' => if r == r' then n else f r'|>                   
+
     | propose a' => if deliberate a' x then trans_ a' x else x
     end.
 
@@ -64,12 +75,16 @@ Definition trans a x y := y = trans_ a x.
 
 Inductive var :=
     | isAssigned : R -> M -> var
-    | isMember : M -> var.
+    | isMember : M -> var
+    | withinTerm : R -> var.
+
+
 
 Definition valuation (x : var) (s : state) : bool :=
     match x with 
     | isAssigned r m => m \in assignment s r
     | isMember m => m \in member s
+    | withinTerm r => now <? expiration s r 
     end.
 
 
@@ -149,11 +164,17 @@ Definition isDictator :=
 
 
 (*
-    任意の状態において、mがrを罷免される提案がされた後の状態でmがrに就いている
-     = 罷免提案が否決される
+    罷免提案が否決される
 *)
-Definition undissmissible :=   
-    s |= [propose (dismissal r m)](Var (isAssigned r m)).
+Definition rejectDismissal :=   
+    [propose (dismissal r m)](Var (isAssigned r m)).
+
+(* 
+    任期満了前の罷免提案は否決される 
+*)    
+
+Definition unndissmissibleBeforExpiation :=
+    Var (withinTerm r) → rejectDismissal.
 
 End properties.
 
