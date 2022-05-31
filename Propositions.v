@@ -21,21 +21,22 @@ Notation DEPOSIT := Pdeposit.
 Notation ALLOCATE := Pallocate.
 Notation SET_EXPIRATION := Pset_expiration.
 
+Section Proposition.
 
 Variable (m : citizen) (r : role) (s : state).
 
 
 (* 任意の状態から任意の状態遷移を経ても、条件badを満たす状態にはならない *)
-Definition safety (bad : form) (a : act):= 
-    s |= AG a (¬ bad).
+Definition safety (bad : form) := 
+    s |= AG (¬ bad).
 
 
 (* 任意の状態から任意の状態遷移を経ても、いずれ条件goodを満たす状態に至る *)
-Definition liveness (good : form) (a : act):=
-    s |= AF a good.
+Definition liveness (good : form) :=
+    s |= AF good.
 
 
-(* 罷免が底賛されている *)
+(* 罷免が提案されている *)
 Definition IsDissmissProposed r m :=
     IsProposed (DISMISSAL r m).
 
@@ -44,6 +45,12 @@ Definition IsDissmissProposed r m :=
 Definition RejectDismissal := 
     IsDissmissProposed r m ∧ [DELIBERATE] (IsAssigned r m).
 
+Definition IsDectator :=
+    AG RejectDismissal.
+
 (*  任期満了前の罷免提案は否決される *)    
 Definition unndissmissibleBeforExpiation :=
     WithinTerm r → RejectDismissal.
+
+End Proposition.
+
