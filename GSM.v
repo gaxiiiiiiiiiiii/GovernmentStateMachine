@@ -1,183 +1,147 @@
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 From mathcomp Require Export all_ssreflect.
-Require Import Nat.
+Require Export Nat.
 
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 
-Variable M R : finType.
+(***************)
+(* パラメータなど *)    
+(***************)
+
+Parameter citizen : finType.
 Definition currency := nat.
 Definition timestamp := nat.
+Definition random := Type.
 
+Parameter now : timestamp.
+Parameter random_choice : forall A : Type, random -> A.
+Definition randomC := random_choice citizen.
+Definition randomSetC := random_choice {set citizen}.
+
+
+(*******)
+(* 役職 *)    
+(*******)
+
+Variant role :=
+    | Professional
+    | Facilitator.
+
+Lemma eq_role_dec (s t : role) : { s = t} + { s <> t}.
+Proof. decide equality; apply eq_comparable. Qed.
+Definition role_eqMixin := EqMixin (compareP eq_role_dec).
+Canonical Structure role_eqType := Eval hnf in @EqType role role_eqMixin.
+
+(************)
+(* アクション *)
+(************)
+
+Inductive proposal  :=
+    | Passign : role -> citizen -> proposal
+    | Pdismissal : role -> citizen -> proposal
+    | Padd_mem :citizen -> proposal
+    | Pdel_mem :citizen -> proposal 
+    | Pwithdraw : currency -> proposal 
+    | Pdeposit : currency -> proposal 
+    | Pallocate : currency -> role -> proposal
+    | Pset_expiration : role -> timestamp -> proposal.
+
+Lemma eq_proposal_dec (s t : proposal) : { s = t} + { s <> t}.
+Proof. decide equality; apply eq_comparable. Qed.
+Definition proposal_eqMixin := EqMixin (compareP eq_proposal_dec).
+Canonical Structure proposal_eqType := Eval hnf in @EqType proposal proposal_eqMixin.
+
+Inductive act :=
+    | Apropose : proposal -> random -> random -> random -> act
+    | Adeliberate.
+
+
+(************)    
+(* 状態と熟議 *)
+(************)
+
+Record deliberation := mkDlb{
+    Dproposal : proposal;
+    Dprofessional : citizen;
+    Dfacilitator : citizen;
+    Ddeliberator : {set citizen};
+}.
 
 Record state := mkState{
-    treasury : currency;    
-    member : {set M};
-    role : {set R};
-    assignment : R -> {set M};
-    budget : R -> currency;
-    expiration : R -> timestamp;
+    Streasury : currency;    
+    Smember : {set citizen};
+    Sassignment : role -> {set citizen};
+    Sbudget : role -> currency;
+    Sexpiration : role -> timestamp;
+    Sdeliberation : deliberation
 }.
 
 Instance etaState : Settable state := 
-    settable! mkState <treasury; member; role; assignment; budget; expiration>.
+    settable! mkState 
+        < Streasury; Smember; Sassignment; Sbudget; Sexpiration; Sdeliberation >.
 
 
-Inductive act  :=
-    | assign : R -> M -> act
-    | dismissal : R -> M -> act
+(**********)
+(* 状態遷移 *)
+(**********)
 
-    | add_mem : M -> act
-    | del_mem : M -> act 
+Parameter evalD : deliberation -> bool.  
 
-    | add_role : R -> act 
-    | del_role : R -> act
-
-    | withdraw : currency -> act 
-    | deposit : currency -> act 
-    | allocate : currency -> R -> act
-
-    | set_expiration : R -> timestamp -> act
-
-    | propose : act -> act.
-
-Variable deliberate : act -> state -> bool.
-
-Variable now : nat.
-
-Fixpoint trans_  (a : act) (x : state)  :=
+Definition transv_  (a : proposal) (x : state)  :=
     match a with 
-    | assign r m => 
-        x <| assignment ::= fun f => fun r' => if r == r' then m |: f r' else f r' |>
-    | dismissal r m => 
-        x <| assignment ::= fun f => fun r' => if r == r' then f r' :\ m else f r' |> 
+    | Passign r m => 
+        x <| Sassignment ::= fun f => fun r' => if r == r' then m |: f r' else f r' |>
+    | Pdismissal r m => 
+        x <| Sassignment ::= fun f => fun r' => if r == r' then f r' :\ m else f r' |> 
 
-    | add_mem m => x <| member ::= fun X => m |: X|>
-    | del_mem m => x <| member ::= fun X => X :\ m|>
+    | Padd_mem m => x <| Smember ::= fun X => m |: X|>
+    | Pdel_mem m => x <| Smember ::= fun X => X :\ m|>
 
-    | add_role r => x <| role ::= fun X => r |: X|> 
-    | del_role r => x <| role ::= fun X => X :\ r|>
+    | Pwithdraw n => x <|Streasury ::= plus n|>    
+    | Pdeposit n => x <|Streasury ::= minus n|>
+    | Pallocate n r => x <|Streasury ::= minus n|> 
+                        <|Sbudget ::= fun f => fun r' => if r == r' then f r + n else f r'|>
 
-    | withdraw n => x <|treasury ::= plus n|>    
-    | deposit n => x <|treasury ::= minus n|>
-    | allocate n r => x <|treasury ::= minus n|> 
-                        <|budget ::= fun f => fun r' => if r == r' then f r + n else f r'|>
-
-    | set_expiration r n => 
-        x  <|budget ::= fun f => fun r' => if r == r' then n else f r'|>                   
-
-    | propose a' => if deliberate a' x then trans_ a' x else x
+    | Pset_expiration r n => 
+        x  <|Sbudget ::= fun f => fun r' => if r == r' then n else f r'|>                   
     end.
+
+Definition trans_ (a : act) (x : state) :=
+    match a with 
+    | Apropose a' p_ f_ d_ => 
+        x <| Sdeliberation := mkDlb a' (randomC p_) (randomC f_ ) (randomSetC d_) |>
+    | Adeliberate => 
+        if evalD (Sdeliberation x) then transv_ (Dproposal (Sdeliberation x)) x else x
+    end.
+
 
 Definition trans a x y := y = trans_ a x.
 
+(***********)
+(* 原子命題 *)
+(***********)
+
 Inductive var :=
-    | isAssigned : R -> M -> var
-    | isMember : M -> var
-    | withinTerm : R -> var.
-
-
+    | isAssigned : role -> citizen -> var
+    | isMember : citizen -> var
+    | withinTerm : role -> var
+    | isProposed : proposal -> var
+    | isValidDeliberation.
 
 Definition valuation (x : var) (s : state) : bool :=
     match x with 
-    | isAssigned r m => m \in assignment s r
-    | isMember m => m \in member s
-    | withinTerm r => now <? expiration s r 
+    | isAssigned r m => m \in Sassignment s r
+    | isMember m => m \in Smember s
+    | withinTerm r => now <? Sexpiration s r 
+    | isProposed a => a == Dproposal (Sdeliberation s)
+    | isValidDeliberation => 
+        (Dprofessional (Sdeliberation s) \in Sassignment s Professional) && 
+        (Dfacilitator (Sdeliberation s) \in Sassignment s Facilitator) &&
+        (Ddeliberator (Sdeliberation s) != set0)
     end.
-
-
-Inductive form :=
-    | Var : var -> form    
-    | Top : form
-    | Bot : form 
-    | Not : form -> form 
-    | And : form -> form -> form 
-    | Or : form -> form -> form 
-    | Imp : form -> form -> form
-    | Box : act -> form -> form 
-    | Dia : act -> form -> form 
-    | AG : act -> form -> form 
-    | EG : act -> form -> form.
-    
-
-Inductive step (a : act) : state -> state -> Prop :=
-    | here s t : trans a s t -> step a s t
-    | there b s t r : trans a s t -> step b t r -> step a s r.
-
-
-Fixpoint eval (e : form) (s : state) : Prop :=
-    match e with 
-    | Var n => valuation n s
-    | Top => True
-    | Bot => False
-    | Not e' => ~ eval e' s
-    | And e1 e2 => eval e1 s /\ eval e2 s
-    | Or e1 e2 => eval e1 s \/ eval e2 s
-    | Imp e1 e2 => eval e1 s -> eval e2 s
-    | Box a e' => forall s', trans a s s' -> eval e' s'
-    | Dia a e' => exists s', trans a s s' /\ eval e' s'
-    | AG a e' => forall s', step a s s' -> eval e' s'
-    | EG a e' => exists s', eval e' s' /\ (forall t, step a s t -> step a t s' -> eval e' t)
-    end.  
-
-
-Notation "s |= e" := (eval e s)(at level 80).
-Notation "⊤" := Top.
-Notation "⊥" := Bot.
-Notation "¬ e" := (Not e)(at level 10).
-Notation "e1 ∧ e2" := (And e1 e2) (at level 30).
-Notation "e1 ∨ e2" := (Or e1 e2) (at level 30).
-Notation "[ a ] e" :=(Box a e)(at level 50).
-Notation "< a > e" := (Dia a e) (at level 30).
-Notation "e1 → e2" := (Imp e1 e2) (at level 20).
-
-
-Definition AF a e := ¬ (EG a (¬ e)).
-
-Section properties.
-Variable (m : M) (r : R) (s : state).
-
-
-(*
-    任意の状態から任意の状態遷移を経ても、条件badを満たす状態にはならない
-*)
-Definition safety (bad : form) := 
-    forall s a, s |= AG a (¬ bad).
-
-
-(*
-    任意の状態から任意の状態遷移を経ても、いずれ条件goodを満たす状態に至る
-*)
-Definition liveness (good : form) :=
-    forall s a, s |= AF a good.
-
-
-(*　
-    任意の状態sにおいて、mが構成員であるならmがrに任命されている
-     = mを罷免する事が出来ない
-     = mが独裁的な地位についている？    
-*)
-Definition isDictator :=
-    s |= Var (isMember m) → Var (isAssigned r m).
-
-
-(*
-    罷免提案が否決される
-*)
-Definition rejectDismissal :=   
-    [propose (dismissal r m)](Var (isAssigned r m)).
-
-(* 
-    任期満了前の罷免提案は否決される 
-*)    
-
-Definition unndissmissibleBeforExpiation :=
-    Var (withinTerm r) → rejectDismissal.
-
-End properties.
-
 
 
 
