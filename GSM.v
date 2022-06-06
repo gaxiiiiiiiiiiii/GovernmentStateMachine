@@ -21,12 +21,12 @@ Definition randomC := random_choice citizen.
 Definition randomSetC := random_choice {set citizen}.
 
 
+(*****************)
+(* subStateの種類 *)
+(*****************)
 
-
-
-
-
-Variant admin :=
+(* type of subState *)
+Variant toss :=
     | global    
     | police
     | judiciary
@@ -43,18 +43,18 @@ Variant admin :=
 (************)
 
 Inductive proposal  :=
-    | Passign : admin -> citizen -> proposal
-    | Pdismissal : admin -> citizen -> proposal
     | Pwithdraw : currency -> proposal 
     | Pdeposit : currency -> proposal 
-    | Pallocate : admin -> currency ->  proposal
-    | Pset_tenure : admin -> citizen -> proposal
-    | Pset_expiration : admin -> timestamp -> proposal.    
+    | Pallocate : toss -> currency ->  proposal
+    | Passign : toss -> citizen -> proposal
+    | Pdismissal : toss -> citizen -> proposal    
+    | Pset_tenure : toss -> citizen -> proposal
+    | Pset_expiration : toss -> timestamp -> proposal.    
 
 
 Inductive act :=
-    | Apropose : admin -> proposal -> random -> random -> random -> act
-    | Adeliberate : admin -> act.
+    | Apropose : toss -> proposal -> random -> random -> random -> act
+    | Adeliberate : toss -> act.
 
 
 (************)    
@@ -75,56 +75,27 @@ Record subState := mkSubState {
     SSmember : {set citizen};
     SSdeliberation : option deliberation;
     SStenure : option citizen;
-    SSterm : option timestamp;
+    SSexpiration : option timestamp;
 }.
-
-
-
-(* Record subState := mkSubState {
-    SSbudget : currency;
-    SSmember : {set citizen};
-}.
-
-Record subStateDlb := mkSubStateDlb {
-    SSDsort :> subState;
-    SSDdeliberation : option deliberation;    
-}.
-
-Record subStateTnu := mkSubStateTnu {
-    SSTsort :> subStateDlb;
-    SSTtenure : citizen;
-    SSTterm : timestamp;
-}. *)
-
 
 
 Record state := mkState{
     Streasury : currency;    
-    Sadmin : admin -> subState;    
+    Stoss : toss -> subState;    
 }.
 
 (*********************)
 (* updatable recortd *)
 (*********************)
 
-(* Instance etaSubState : Settable subState := 
-    settable! mkSubState 
-        < SSbudget; SSmember>.
 
-Instance etaSubStateDlb : Settable subStateDlb := 
-    settable! mkSubStateDlb 
-        < SSDsort; SSDdeliberation>.
-
-Instance etaSubStateTnu : Settable subStateTnu := 
-    settable! mkSubStateTnu 
-        < SSTsort; SSTtenure; SSTterm>. *)
 
 Instance etaSubState : Settable subState :=
-    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenure; SSterm>.        
+    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenure; SSexpiration>.        
 
 Instance etaState : Settable state := 
     settable! mkState 
-        < Streasury; Sadmin >.
+        < Streasury; Stoss >.
 
 
 
@@ -139,8 +110,8 @@ Tactic Notation "mkCompEq"  :=
 
 Definition eqMixin := Equality.mixin_of.
 
-Definition admin_eqMixin : eqMixin admin. Proof. mkCompEq. Qed.
-Canonical Structure admin_eqType := Eval hnf in @EqType admin admin_eqMixin.
+Definition toss_eqMixin : eqMixin toss. Proof. mkCompEq. Qed.
+Canonical Structure toss_eqType := Eval hnf in @EqType toss toss_eqMixin.
 
 Definition proposal_eqMixin : eqMixin proposal. Proof. mkCompEq. Qed.
 Canonical Structure proposal_eqType := Eval hnf in @EqType proposal proposal_eqMixin.
@@ -155,25 +126,31 @@ Definition subState_eqMixin : eqMixin subState. Proof.
 Qed.
 Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqMixin.
 
+(***********************)
+(* subType of subState *)
+(***********************)
 
+Definition condP ss :=
+    (SSdeliberation ss == None) &&
+    (SStenure ss == None) && 
+    (SSexpiration ss == None).
 
 
 (**********)
 (* 状態遷移 *)
 (**********)
 
+
 Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
     fun f => fun d' =>  if d == d' then r else f d'.
 Notation "a ↦ b" := (subst a b)(at level 10).
 
-Variable (ss : subState) (ssd : subStateDlb) (sst : subStateTnu).
-Definition hoge (a : admin)  : subState :=
-    match a with 
-    | police => ss 
-    | professional => ssd 
-    | judiciary => sst 
-    | _ => ss 
-    end.
+Lemma subst_lemma {dom ran : finType} (f : dom -> ran) (d : dom) (r : ran) :
+    let f' := subst d r f in f' d = r.
+Proof. rewrite /subst eq_refl => // Qed.
+
+
+
 
 Parameter evalD : deliberation -> bool.  
 
@@ -181,37 +158,38 @@ Definition transv_  (a : proposal) (x : state)  :=
     match a with     
     | Pwithdraw n => x <|Streasury ::= plus n|>    
     | Pdeposit n => x <|Streasury ::= minus n|>
-    | Passign a m => 
-        let ss := Sadmin x a in 
-        let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
-        x <| Sadmin ::= a ↦ ss'|>
-    | Pdismissal a m => 
-        let ss := Sadmin x a in 
-        let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
-        x <| Sadmin ::= a ↦ ss'|>
     | Pallocate a n => 
-        let ss := Sadmin x a in 
+        let ss := Stoss x a in 
         let ss' := ss <| SSbudget ::= fun n' => n + n' |> in
-        x <| Sadmin ::= a ↦ ss'|>
+        x <| Stoss ::= a ↦ ss'|>
+    | Passign a m => 
+        let ss := Stoss x a in 
+        let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
+        x <| Stoss ::= a ↦ ss'|>
+    | Pdismissal a m => 
+        let ss := Stoss x a in 
+        let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
+        x <| Stoss ::= a ↦ ss'|>
+    
     | Pset_tenure a m => 
-        let ss := Sadmin x a in 
-        let ss' := ss <| SSTtenure := m |> in
-        x <| Sadmin ::= a ↦ ss'|>
+        let ss := Stoss x a in 
+        let ss' := ss <| SStenure := Some m |> in
+        x <| Stoss ::= a ↦ ss'|>
     | Pset_expiration a n =>
-        let ss := Sadmin x a in 
-        let ss' := ss <| SSTterm := n |> in
-        x <| Sadmin ::= a ↦ ss'|>
+        let ss := Stoss x a in 
+        let ss' := ss <| SSexpiration := Some n |> in
+        x <| Stoss ::= a ↦ ss'|>
     end.
 
 
 Definition trans_ (a : act) (x : state) :=
     match a with 
     | Apropose adm a' p_ f_ d_ => 
-        let ss := Sadmin x adm in         
+        let ss := Stoss x adm in         
         let ss' := ss <|SSdeliberation := Some (mkDlb a' (randomC p_) (randomC f_ ) (randomSetC d_))|> in 
-        x <| Sadmin ::= adm ↦ ss'|>
+        x <| Stoss ::= adm ↦ ss'|>
     | Adeliberate adm => 
-        let ss := Sadmin x adm in
+        let ss := Stoss x adm in
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
         | Some  dlb =>  
@@ -228,38 +206,47 @@ Definition trans a x y := y = trans_ a x.
 (***********)
 
 Inductive var :=
-    | isAssigned : admin -> citizen -> var
-    | withinTerm : admin -> var
-    | isProposed : admin -> proposal -> var
-    | hasTenuren : admin -> var
-    | isTenuren : admin -> citizen -> var
-    | isValidDeliberation : admin -> var.
+    | hasNoBudget : toss -> var
+    | hasNoDeliberation : toss -> var
+    | hasNoTenuren : toss -> var    
+    | hasNoExpiration : toss -> var
+
+    | isAssigned : toss -> citizen -> var
+    | isProposed : toss -> proposal -> var 
+    | isTenuren : toss -> citizen -> var
+    | withinExpiration : toss -> var  
+    | isValidDeliberation : toss -> var.
 
 
 
 
 Definition valuation (x : var) (s : state) : bool :=
-    match x with     
+    match x with
+    | hasNoBudget t => let ss := Stoss s t in SSbudget ss == 0
+    | hasNoDeliberation t => let ss := Stoss s t in SSdeliberation ss == None
+    | hasNoTenuren t => let ss := Stoss s t in SStenure ss == None 
+    | hasNoExpiration t => let ss := Stoss s t in SSexpiration ss == None 
+
     | isAssigned a m => 
-        let ss := Sadmin s a in 
+        let ss := Stoss s a in 
         let mem := SSmember ss in         
         m \in mem
-    | withinTerm a => 
-        let ss := Sadmin s a in 
-        let n := SSterm ss in
-        now <? n
     | isProposed adm a => 
-        let ss := Sadmin s adm in 
+        let ss := Stoss s adm in 
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
         | Some  dlb =>  
             a == Dproposal dlb
         | None => false
         end
+    | withinExpiration a => 
+        let ss := Stoss s a in 
+        let n := SSexpiration ss in
+        now <? n
     | isValidDeliberation a => 
-        let ss := Sadmin s a in 
-        let ps := SSmember (Sadmin s professional) in 
-        let fs := SSmember (Sadmin s facilitator) in 
+        let ss := Stoss s a in 
+        let ps := SSmember (Stoss s professional) in 
+        let fs := SSmember (Stoss s facilitator) in 
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
         | Some  dlb =>  
@@ -267,16 +254,9 @@ Definition valuation (x : var) (s : state) : bool :=
             (Dfacilitator dlb \in fs) &&
             (Ddeliberator dlb != set0)
         | None => false
-        end        
-    | hasTenuren a => 
-        let ss := Sadmin s a in 
-        let m := SStenure ss in 
-        match m with 
-        | Some _ => true 
-        | _ => false 
-        end
+        end           
     | isTenuren a m  =>
-        let ss := Sadmin s a in 
+        let ss := Stoss s a in 
         let m' := SStenure ss in 
         match m' with 
         | Some m'' => m'' == m 
