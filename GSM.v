@@ -22,6 +22,10 @@ Definition randomSetC := random_choice {set citizen}.
 
 
 
+
+
+
+
 Variant admin :=
     | global    
     | police
@@ -63,18 +67,35 @@ Record deliberation := mkDlb{
     Dproposal : proposal;
     Dprofessional : citizen;
     Dfacilitator : citizen;
-    Ddeliberator : {set citizen};    
+    Ddeliberator : {set citizen};
 }.
 
-
-
-Record subState := mkSubState{
+Record subState := mkSubState {
     SSbudget : currency;
-    SStenure : option citizen;
-    SSterm : timestamp;
     SSmember : {set citizen};
-    SSdeliberation : option deliberation
+    SSdeliberation : option deliberation;
+    SStenure : option citizen;
+    SSterm : option timestamp;
 }.
+
+
+
+(* Record subState := mkSubState {
+    SSbudget : currency;
+    SSmember : {set citizen};
+}.
+
+Record subStateDlb := mkSubStateDlb {
+    SSDsort :> subState;
+    SSDdeliberation : option deliberation;    
+}.
+
+Record subStateTnu := mkSubStateTnu {
+    SSTsort :> subStateDlb;
+    SSTtenure : citizen;
+    SSTterm : timestamp;
+}. *)
+
 
 
 Record state := mkState{
@@ -86,10 +107,20 @@ Record state := mkState{
 (* updatable recortd *)
 (*********************)
 
-
-Instance etaSubState : Settable subState := 
+(* Instance etaSubState : Settable subState := 
     settable! mkSubState 
-        < SSbudget; SStenure; SSterm; SSmember; SSdeliberation>.
+        < SSbudget; SSmember>.
+
+Instance etaSubStateDlb : Settable subStateDlb := 
+    settable! mkSubStateDlb 
+        < SSDsort; SSDdeliberation>.
+
+Instance etaSubStateTnu : Settable subStateTnu := 
+    settable! mkSubStateTnu 
+        < SSTsort; SSTtenure; SSTterm>. *)
+
+Instance etaSubState : Settable subState :=
+    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenure; SSterm>.        
 
 Instance etaState : Settable state := 
     settable! mkState 
@@ -118,8 +149,13 @@ Canonical Structure proposal_eqType := Eval hnf in @EqType proposal proposal_eqM
 Definition deliberation_eqMixin  : eqMixin deliberation. Proof. mkCompEq. Qed.
 Canonical Structure deliberation_eqType := Eval hnf in @EqType deliberation deliberation_eqMixin.        
 
-Definition subState_eqMixin : eqMixin subState. Proof. mkCompEq. Qed.
+Definition subState_eqMixin : eqMixin subState. Proof. 
+    refine (EqMixin (compareP _)) => x y.
+    unfold decidable; decide equality; try unfold timestamp; apply eq_comparable.
+Qed.
 Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqMixin.
+
+
 
 
 (**********)
@@ -129,6 +165,15 @@ Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqM
 Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
     fun f => fun d' =>  if d == d' then r else f d'.
 Notation "a ↦ b" := (subst a b)(at level 10).
+
+Variable (ss : subState) (ssd : subStateDlb) (sst : subStateTnu).
+Definition hoge (a : admin)  : subState :=
+    match a with 
+    | police => ss 
+    | professional => ssd 
+    | judiciary => sst 
+    | _ => ss 
+    end.
 
 Parameter evalD : deliberation -> bool.  
 
@@ -150,11 +195,11 @@ Definition transv_  (a : proposal) (x : state)  :=
         x <| Sadmin ::= a ↦ ss'|>
     | Pset_tenure a m => 
         let ss := Sadmin x a in 
-        let ss' := ss <| SStenure := Some m |> in
+        let ss' := ss <| SSTtenure := m |> in
         x <| Sadmin ::= a ↦ ss'|>
     | Pset_expiration a n =>
         let ss := Sadmin x a in 
-        let ss' := ss <| SSterm := n |> in
+        let ss' := ss <| SSTterm := n |> in
         x <| Sadmin ::= a ↦ ss'|>
     end.
 
