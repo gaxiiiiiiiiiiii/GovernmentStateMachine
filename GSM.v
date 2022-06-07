@@ -269,13 +269,13 @@ Definition valuation (x : var) (s : state) : bool :=
         now < n
     | isValidDeliberation a => 
         let ss := Ssubstate s a in 
-        let ps := SSmember (Ssubstate s professional) in 
-        let fs := SSmember (Ssubstate s facilitator) in 
+        let pf := SSmember (Ssubstate s professional) in 
+        let fc := SSmember (Ssubstate s facilitator) in 
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
         | Some  dlb =>  
-            (Dprofessional dlb \in ps) && 
-            (Dfacilitator dlb \in fs) &&
+            (Dprofessional dlb \in pf) && 
+            (Dfacilitator dlb \in fc) &&
             (Ddeliberator dlb != set0)
         | None => false
         end           
