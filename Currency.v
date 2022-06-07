@@ -1,5 +1,4 @@
 From mathcomp Require Export all_ssreflect.
-Require Import Lia.
 Parameter limit' : nat.
 Definition limit := limit' .+1.
 
@@ -72,4 +71,9 @@ Definition subc (x y : currency): currency.
         }
         move => ->.
         apply ltn_trans with (m0 +limit) => //.
-Qed.    
+Qed.
+
+Lemma O_lt_limit : O < limit.
+Proof. unfold limit => //. Qed.
+
+Definition noCurr := Currency 0 O_lt_limit.
