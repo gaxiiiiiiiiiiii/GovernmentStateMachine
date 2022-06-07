@@ -1,7 +1,7 @@
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 From mathcomp Require Export all_ssreflect.
-Require Import Currency Toss Timestamp.
+Require Export Currency Toss Timestamp.
 
 
 Set Implicit Arguments.
@@ -29,13 +29,13 @@ Definition randomSetC := random_choice {set citizen}.
 (* アクション *)
 (************)
 
-Inductive proposal  :=
-    | Pwithdraw : currency -> proposal 
-    | Pdeposit : currency -> proposal 
-    | Pallocate : toss -> currency ->  proposal
+Inductive proposal  :=    
+    | Pwithdraw : toss -> currency -> proposal 
+    | Pdeposit : toss -> currency -> proposal 
+    | Pallocate : toss -> currency -> proposal
     | Passign : toss -> citizen -> proposal
     | Pdismissal : toss -> citizen -> proposal    
-    | PsetTenure : toss -> citizen -> proposal
+    | PsetTenure : toss -> citizen -> proposal    
     | PsetExpiration : toss -> timestamp -> proposal.    
 
 
@@ -65,7 +65,6 @@ Record subState := mkSubState {
 
 
 Record state := mkState{
-    Streasury : currency;    
     Ssubstate : toss -> subState;    
 }.
 
@@ -78,7 +77,7 @@ Instance etaSubState : Settable subState :=
 
 Instance etaState : Settable state := 
     settable! mkState 
-        < Streasury; Ssubstate >.
+        < Ssubstate >.
 
 
 (**************************)
@@ -108,7 +107,7 @@ Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqM
 
 Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
     fun f => fun d' =>  if d == d' then r else f d'.
-Notation "a ↦ b" := (subst a b)(at level 10).
+Notation "t ↦ b" := (subst t b)(at level 10).
 
 
 Lemma subst_lemma {dom ran : finType} (f : dom -> ran) (d : dom) (r : ran) :
@@ -118,31 +117,39 @@ Proof. rewrite /subst eq_refl => //. Qed.
 
 Parameter evalD : deliberation -> bool.  
 
-Definition transv_  (a : proposal) (x : state)  :=
-    match a with     
-    | Pwithdraw n => x <|Streasury ::= addc n|>    
-    | Pdeposit n => x <|Streasury ::= subc n|>
-    | Pallocate a n => 
-        let ss := Ssubstate x a in 
-        let ss' := ss <| SSbudget ::= fun n' => addc n n' |> in
-        x <| Ssubstate ::= a ↦ ss'|>
-    | Passign a m => 
-        let ss := Ssubstate x a in 
+Definition transv_  (p : proposal) (x : state)  :=
+    match p with     
+    | Pwithdraw t n => 
+        let ss := Ssubstate x t in 
+        let ss' := ss <|SSbudget ::= subc n|> in 
+        x <| Ssubstate ::= t ↦ ss'|>   
+    | Pdeposit t n => 
+        let ss := Ssubstate x t in 
+        let ss' := ss <|SSbudget ::= addc n|> in 
+        x <| Ssubstate ::= t ↦ ss'|>  
+    | Pallocate t n => 
+        let ssf := Ssubstate x global in 
+        let sst := Ssubstate x t in 
+        let ssf' := ssf <| SSbudget ::= addc n|> in        
+        let sst' := sst <|SSbudget ::= subc n|> in 
+        x <| Ssubstate ::=  global ↦ ssf|> <| Ssubstate ::= t ↦ sst'|>
+    | Passign t m => 
+        let ss := Ssubstate x t in 
         let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
-        x <| Ssubstate ::= a ↦ ss'|>
-    | Pdismissal a m => 
-        let ss := Ssubstate x a in 
+        x <| Ssubstate ::= t ↦ ss'|>
+    | Pdismissal t m => 
+        let ss := Ssubstate x t in 
         let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
-        x <| Ssubstate ::= a ↦ ss'|>
+        x <| Ssubstate ::= t ↦ ss'|>
     
-    | PsetTenure a m => 
-        let ss := Ssubstate x a in 
+    | PsetTenure t m => 
+        let ss := Ssubstate x t in 
         let ss' := ss <| SStenure := Some m |> in
-        x <| Ssubstate ::= a ↦ ss'|>
-    | PsetExpiration a n =>
-        let ss := Ssubstate x a in 
+        x <| Ssubstate ::= t ↦ ss'|>
+    | PsetExpiration t n =>
+        let ss := Ssubstate x t in 
         let ss' := ss <| SSexpiration := Some n |> in
-        x <| Ssubstate ::= a ↦ ss'|>
+        x <| Ssubstate ::= t ↦ ss'|>
     end.
 
 
@@ -191,8 +198,6 @@ Inductive var :=
 
 
 
-
-
 Definition valuation (x : var) (s : state) : bool :=
     match x with
     | hasNoBudget t => let ss := Ssubstate s t in SSbudget ss == noCurr
@@ -205,7 +210,7 @@ Definition valuation (x : var) (s : state) : bool :=
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists n , (Pwithdraw n == prp)]
+            ~~ [exists n , [exists t', Pwithdraw t' n == prp]]
         end
 
     | restrictDeposit t  =>
@@ -213,7 +218,7 @@ Definition valuation (x : var) (s : state) : bool :=
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists n , (Pdeposit n == prp)]
+            ~~ [exists n , [exists t' , Pdeposit t' n == prp]]
         end
     | restrictAllocate t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
