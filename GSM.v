@@ -95,7 +95,7 @@ Canonical Structure deliberation_eqType := Eval hnf in @EqType deliberation deli
 
 Definition subState_eqMixin : eqMixin subState. Proof. 
     refine (EqMixin (compareP _)) => x y.
-    unfold decidable; decide equality; try unfold timestamp; apply eq_comparable.
+    unfold decidable; decide equality; apply eq_comparable.
 Qed.
 Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqMixin.
 
@@ -286,7 +286,7 @@ Definition valuation (x : var) (s : state) : bool :=
         | Some m'' => m'' == m 
         | _ => false
         end
-        
+
     end.
 
 
