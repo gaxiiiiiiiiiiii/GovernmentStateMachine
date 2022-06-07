@@ -181,13 +181,13 @@ Inductive var :=
     | hasNoTenuren : toss -> var    
     | hasNoExpiration : toss -> var
 
-    | restrictWithdraw  : toss -> var
-    | restrictDeposit : toss -> var
-    | restrictAllocate : toss -> var
-    | restrictAssign : toss -> var
-    | restrictDismissal : toss -> var
-    | restrictSetTenure : toss -> var
-    | restrictSetExpiration : toss -> var
+    | prohibitWithdraw  : toss -> var
+    | prohibitDeposit : toss -> var
+    | prohibitAllocate : toss -> var
+    | prohibitAssign : toss -> var
+    | prohibitDismissal : toss -> var
+    | prohibitSetTenure : toss -> var
+    | prohibitSetExpiration : toss -> var
 
     | isAssigned : toss -> citizen -> var
     | isProposed : toss -> proposal -> var 
@@ -205,7 +205,7 @@ Definition valuation (x : var) (s : state) : bool :=
     | hasNoTenuren t => let ss := Ssubstate s t in SStenure ss == None 
     | hasNoExpiration t => let ss := Ssubstate s t in SSexpiration ss == None 
 
-    | restrictWithdraw  t =>
+    | prohibitWithdraw  t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
@@ -213,42 +213,42 @@ Definition valuation (x : var) (s : state) : bool :=
             ~~ [exists n , [exists t', Pwithdraw t' n == prp]]
         end
 
-    | restrictDeposit t  =>
+    | prohibitDeposit t  =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
             ~~ [exists n , [exists t' , Pdeposit t' n == prp]]
         end
-    | restrictAllocate t =>
+    | prohibitAllocate t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
             ~~ [exists n, [exists t', (Pallocate t' n == prp)]]
         end
-    | restrictAssign t =>
+    | prohibitAssign t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
             ~~ [exists m, [exists t', (Passign t' m == prp)]]
         end
-    | restrictDismissal t =>
+    | prohibitDismissal t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
             ~~ [exists m, [exists t', (Pdismissal t' m == prp)]]
         end
-    | restrictSetTenure t =>
+    | prohibitSetTenure t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
         | Some dlb' => let prp := Dproposal dlb' in 
             ~~ [exists m, [exists t', (PsetTenure t' m == prp)]]
         end
-    | restrictSetExpiration t =>
+    | prohibitSetExpiration t =>
         let dlb := SSdeliberation (Ssubstate s t) in 
         match dlb with 
         | None => true 
