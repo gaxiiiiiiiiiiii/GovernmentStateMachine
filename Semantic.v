@@ -1,4 +1,4 @@
-Require Export GSM.
+Require Export GSM. 
 
 
 Set Implicit Arguments.
