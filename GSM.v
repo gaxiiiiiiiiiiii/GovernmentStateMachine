@@ -1,7 +1,8 @@
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 From mathcomp Require Export all_ssreflect.
-Require Export Currency Toss Timestamp.
+Require Export Currency Administration Timestamp.
+
 
 
 Set Implicit Arguments.
@@ -11,16 +12,27 @@ Unset Strict Implicit.
 (* メタ・アサンプション *)
 (********************)
 
+
+(* 市民 *)
 Parameter citizen : finType.
-Parameter limit : nat.
+
+(* 現在時刻を返す関数 *)
+Parameter now : timestamp.
+
+(* 乱数 *)
 Definition random := Type.
 
+(* 乱数と集合をとり、ランダムに要素を抽出する関数 *)
+Parameter random_choice : forall {T : finType}, {set T} -> random -> T.
+Axiom random_choice_axiom : forall (T : finType) r (A : {set T}), 
+    random_choice A r \in A.
 
-Parameter now : timestamp.
-Parameter random_choice : forall A : Type, random -> A.
-Definition randomC := random_choice citizen.
-Definition randomSetC := random_choice {set citizen}.
-
+(* 乱数と集合をとり、任意の大きさの部分集合を返す関数 *)
+(* この公理は、#|A| < n の時に矛盾が生じるので要修正 *)
+Parameter random_choice_set : forall {T : finType} (A : {set T}),random -> nat -> {set T}.
+Axiom random_choice_set_axiom : forall {T : finType} r (A : {set T}) n,
+    let B := @random_choice_set T A r n in 
+    (B \subset A) && (#|B| == n).
 
 
 
@@ -29,22 +41,33 @@ Definition randomSetC := random_choice {set citizen}.
 (* アクション *)
 (************)
 
-Inductive proposal  :=    
-    | Pwithdraw : toss -> currency -> proposal 
-    | Pdeposit : toss -> currency -> proposal 
-    | Pallocate : toss -> currency -> proposal
-    | Passign : toss -> citizen -> proposal
-    | Pdismissal : toss -> citizen -> proposal    
-    | PsetTenure : toss -> citizen -> proposal    
-    | PsetExpiration : toss -> timestamp -> proposal.    
+Inductive proposal  :=
+    (* 国庫・予算の入出金 *)
+    | PwithdrawTreasury : currency -> proposal
+    | PdepositTreasury : currency -> proposal
+    | PwithdrawBudget : admin -> currency -> proposal 
+    | PdepositBudget : admin -> currency -> proposal 
+    | Pallocate : admin -> currency -> proposal
+    (* 役職への任免・罷免 *)
+    | PassignMember : admin -> citizen -> proposal
+    | PdismissalMember : admin -> citizen -> proposal    
+    | PasignTenureWorker : admin -> citizen -> timestamp -> proposal    
+    | PdismissalTenureWorker : admin -> citizen -> proposal
+    (* 市民登録・解除 *)
+    | Pregisrate : citizen -> proposal
+    | Pderegisrate : citizen -> proposal.
+
 
 
 Inductive act :=
-    | Apropose : toss -> proposal -> random -> random -> random -> act
-    | Adeliberate : toss -> act.
+    | AsubPropose : admin -> proposal -> random -> random -> random -> nat -> act
+    | AglobalPropose : proposal -> random -> random -> random -> nat -> act
+    | AsubDeliberate : admin -> act
+    | AglobalDeliberate : act.
 
 
-(************)    
+
+(************) 
 (* 状態と熟議 *)
 (************)
 
@@ -59,30 +82,37 @@ Record subState := mkSubState {
     SSbudget : currency;
     SSmember : {set citizen};
     SSdeliberation : option deliberation;
-    SStenure : option citizen;
-    SSexpiration : option timestamp;
+    SStenureWorker : {set citizen * timestamp};
 }.
 
 
 Record state := mkState{
-    Ssubstate : toss -> subState;    
+    Streasury : currency;
+    Smember : {set citizen};
+    Sdeliberation : option deliberation;
+    Ssubstate : admin -> subState
 }.
 
-(*********************)
-(* updatable recortd *)
-(*********************)
+(*************************************)
+(* updatable recortd's instantiation *)
+(*************************************)
 
 Instance etaSubState : Settable subState :=
-    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenure; SSexpiration>.        
+    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenureWorker>.        
 
 Instance etaState : Settable state := 
     settable! mkState 
-        < Ssubstate >.
+        < Streasury; Smember; Sdeliberation;Ssubstate >.
 
 
 (**************************)
 (* eqType's instantiation *)
 (**************************)
+
+Tactic Notation "mkCompEq"  :=
+    refine (EqMixin (compareP _)) => x y;
+    unfold decidable; decide equality; apply eq_comparable.
+Notation eqMixin := Equality.mixin_of.
 
 
 Definition proposal_eqMixin : eqMixin proposal. Proof. mkCompEq. Qed.
@@ -114,58 +144,98 @@ Lemma subst_lemma {dom ran : finType} (f : dom -> ran) (d : dom) (r : ran) :
     let f' := subst d r f in f' d = r.
 Proof. rewrite /subst eq_refl => //. Qed.
 
+Fixpoint findExpiration_ (p : seq (citizen * timestamp)) (c : citizen) : option timestamp :=
+    match p with 
+    | [::] => None
+    | (m,n) :: p' => if c == m then Some n else findExpiration_ p' c 
+    end.
+
+Definition findExpiration (p : {set citizen * timestamp}) (c : citizen) : option timestamp :=
+    findExpiration_ (enum p) c.
+
 
 Parameter evalD : deliberation -> bool.  
 
+
 Definition transv_  (p : proposal) (x : state)  :=
-    match p with     
-    | Pwithdraw t n => 
+    match p with 
+    | PwithdrawTreasury n => x <| Streasury ::= subc n|>
+    | PdepositTreasury n => x <| Streasury ::= addc n|>
+    | PwithdrawBudget t n => 
         let ss := Ssubstate x t in 
         let ss' := ss <|SSbudget ::= subc n|> in 
         x <| Ssubstate ::= t ↦ ss'|>   
-    | Pdeposit t n => 
+    | PdepositBudget t n => 
         let ss := Ssubstate x t in 
         let ss' := ss <|SSbudget ::= addc n|> in 
-        x <| Ssubstate ::= t ↦ ss'|>  
+        x <| Ssubstate ::= t ↦ ss'|>      
     | Pallocate t n => 
-        let ssf := Ssubstate x global in 
-        let sst := Ssubstate x t in 
-        let ssf' := ssf <| SSbudget ::= addc n|> in        
-        let sst' := sst <|SSbudget ::= subc n|> in 
-        x <| Ssubstate ::=  global ↦ ssf|> <| Ssubstate ::= t ↦ sst'|>
-    | Passign t m => 
+        let ss := Ssubstate x t in 
+        let ss' := ss <|SSbudget ::= subc n|> in 
+        x  <| Ssubstate ::= t ↦ ss'|> <| Streasury ::= subc n|>
+   
+    | PassignMember t m => 
         let ss := Ssubstate x t in 
         let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
-        x <| Ssubstate ::= t ↦ ss'|>
-    | Pdismissal t m => 
+        x <| Ssubstate ::= t ↦ ss'|>     
+    | PdismissalMember t m => 
         let ss := Ssubstate x t in 
         let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
         x <| Ssubstate ::= t ↦ ss'|>
-    
-    | PsetTenure t m => 
+    | PasignTenureWorker t m n =>
+        let tw := (m,n) in 
         let ss := Ssubstate x t in 
-        let ss' := ss <| SStenure := Some m |> in
-        x <| Ssubstate ::= t ↦ ss'|>
-    | PsetExpiration t n =>
+        let tws := SStenureWorker ss in 
+        x  <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tw |: tws|>) |>
+
+    | PdismissalTenureWorker t m => 
         let ss := Ssubstate x t in 
-        let ss' := ss <| SSexpiration := Some n |> in
-        x <| Ssubstate ::= t ↦ ss'|>
+        let tws := SStenureWorker ss in 
+        let n := findExpiration tws m in 
+        match n with 
+        | None => x 
+        | Some n' => x <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tws :\ (m,n')|>) |>
+        end
+    | Pregisrate m => x <| Smember ::= fun mem => m |: mem|>
+    | Pderegisrate m => x <| Smember ::= fun mem => mem :\ m|>
     end.
+
+
 
 
 Definition trans_ (a : act) (x : state) :=
     match a with 
-    | Apropose adm a' p_ f_ d_ => 
-        let ss := Ssubstate x adm in         
-        let ss' := ss <|SSdeliberation := Some (mkDlb a' (randomC p_) (randomC f_ ) (randomSetC d_))|> in 
+    | AsubPropose adm a' p_ f_ d_ n => 
+        let ss := Ssubstate x adm in   
+        let mem := SSmember ss in 
+        let p := random_choice mem p_ in 
+        let f := random_choice mem f_ in 
+        let d := random_choice_set mem d_ n in 
+        let ss' := ss <|SSdeliberation := Some (mkDlb a' p f d)|> in 
         x <| Ssubstate ::= adm ↦ ss'|>
-    | Adeliberate adm => 
+
+    | AsubDeliberate adm => 
         let ss := Ssubstate x adm in
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
-        | Some  dlb =>  
+        | Some dlb =>  
             if evalD dlb then transv_ (Dproposal dlb) x else x
         | None => x
+        end
+
+    | AglobalPropose a' p_ f_ d_ n =>
+        let mem := Smember x in
+        let p := random_choice mem p_ in 
+        let f := random_choice mem f_ in 
+        let d := random_choice_set mem d_ n in 
+        x <|Sdeliberation := Some (mkDlb a' p f d)|>
+
+    | AglobalDeliberate => 
+        let dlb := Sdeliberation x in 
+        match dlb with 
+        | None => x 
+        | Some dlb_ => 
+            if evalD dlb_ then transv_ (Dproposal dlb_) x else x 
         end
     end.
 
@@ -176,25 +246,22 @@ Definition trans a x y := y = trans_ a x.
 (***********)
 
 Inductive var :=
-    | hasNoBudget : toss -> var
-    | hasNoDeliberation : toss -> var
-    | hasNoTenuren : toss -> var    
-    | hasNoExpiration : toss -> var
+    (* substaeの状態の制限 *)
+    | hasNoBudget : admin -> var
+    | hasNoDeliberation : admin -> var
+    | hasNoTenureWoker : admin -> var
+    (* 熟議できる提案の制限 *)
+    | treasuryRestriction : admin -> var 
+    | budgetRestriction : admin -> var
+    | allocateRestriction : admin -> var
+    | assignRestriction : admin -> var
+    | regisrateRestriction : admin -> var
 
-    | prohibitWithdraw  : toss -> var
-    | prohibitDeposit : toss -> var
-    | prohibitAllocate : toss -> var
-    | prohibitAssign : toss -> var
-    | prohibitDismissal : toss -> var
-    | prohibitSetTenure : toss -> var
-    | prohibitSetExpiration : toss -> var
-
-    | isAssigned : toss -> citizen -> var
-    | isProposed : toss -> proposal -> var 
-    | isTenuren : toss -> citizen -> var
-    | withinExpiration : toss -> var  
-    | isValidDeliberation : toss -> var.
-
+    | isAssigned : admin -> citizen -> var
+    | isProposed : admin -> proposal -> var 
+    | isTenureWorker : admin -> citizen -> var
+    | withinExpiration : admin -> citizen-> var  
+    | isValidDeliberation : admin -> admin -> admin -> var.
 
 
 
@@ -202,60 +269,63 @@ Definition valuation (x : var) (s : state) : bool :=
     match x with
     | hasNoBudget t => let ss := Ssubstate s t in SSbudget ss == noCurr
     | hasNoDeliberation t => let ss := Ssubstate s t in SSdeliberation ss == None
-    | hasNoTenuren t => let ss := Ssubstate s t in SStenure ss == None 
-    | hasNoExpiration t => let ss := Ssubstate s t in SSexpiration ss == None 
-
-    | prohibitWithdraw  t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists n , [exists t', Pwithdraw t' n == prp]]
-        end
-
-    | prohibitDeposit t  =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists n , [exists t' , Pdeposit t' n == prp]]
-        end
-    | prohibitAllocate t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists n, [exists t', (Pallocate t' n == prp)]]
-        end
-    | prohibitAssign t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists m, [exists t', (Passign t' m == prp)]]
-        end
-    | prohibitDismissal t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists m, [exists t', (Pdismissal t' m == prp)]]
-        end
-    | prohibitSetTenure t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists m, [exists t', (PsetTenure t' m == prp)]]
-        end
-    | prohibitSetExpiration t =>
-        let dlb := SSdeliberation (Ssubstate s t) in 
-        match dlb with 
-        | None => true 
-        | Some dlb' => let prp := Dproposal dlb' in 
-            ~~ [exists m, [exists t', (PsetExpiration t' m == prp)]]
-        end
-    
+    | hasNoTenureWoker t => let ss := Ssubstate s t in SStenureWorker ss == set0
+    | treasuryRestriction t =>
+            let dlb := SSdeliberation (Ssubstate s t) 
+            in match dlb with 
+            | None => true 
+            | Some dlb' => let prp := Dproposal dlb' in
+                match prp with 
+                | PwithdrawTreasury  _ => false 
+                | PdepositTreasury _ => false  
+                | _ => false
+                end
+            end
+    | budgetRestriction t =>
+            let dlb := SSdeliberation (Ssubstate s t) 
+            in match dlb with 
+            | None => true 
+            | Some dlb' => let prp := Dproposal dlb' in
+                match prp with 
+                | PwithdrawBudget t' _ => t == t' 
+                | PdepositBudget t'  _ => t == t'  
+                | _ => true
+                end
+            end
+    | allocateRestriction t =>
+            let dlb := SSdeliberation (Ssubstate s t) 
+            in match dlb with 
+            | None => true 
+            | Some dlb' => let prp := Dproposal dlb' in
+                match prp with 
+                | Pallocate _ _ => false
+                | _ => true
+                end
+            end
+    | assignRestriction t => 
+        let dlb := SSdeliberation (Ssubstate s t) 
+            in match dlb with 
+            | None => true 
+            | Some dlb' => let prp := Dproposal dlb' in
+                match prp with 
+                | PassignMember  _ _ => false
+                | PdismissalMember  _ _ => false
+                | PasignTenureWorker  _ _ _ => false
+                | PdismissalTenureWorker  _ _ => false
+                | _ => true
+                end
+            end
+    | regisrateRestriction t => 
+        let dlb := SSdeliberation (Ssubstate s t) 
+            in match dlb with 
+            | None => true 
+            | Some dlb' => let prp := Dproposal dlb' in
+                match prp with 
+                | Pregisrate _ => false
+                | Pderegisrate _ => false
+                | _ => true
+                end
+            end
     | isAssigned a m => 
         let ss := Ssubstate s a in 
         let mem := SSmember ss in         
@@ -268,14 +338,26 @@ Definition valuation (x : var) (s : state) : bool :=
             a == Dproposal dlb
         | None => false
         end
-    | withinExpiration a => 
+    | isTenureWorker t m  =>
+        let ss := Ssubstate s t in 
+        let tws := SStenureWorker ss in 
+        let n := findExpiration tws m in
+        match n with 
+        | Some _ => true 
+        | _ => false
+        end
+    | withinExpiration t m => 
+        let ss := Ssubstate s t in 
+        let tws := SStenureWorker ss in 
+        let tw := findExpiration tws m in
+        match tw with 
+        | None => false 
+        | Some n => now < n 
+        end 
+    | isValidDeliberation a ps fs => 
         let ss := Ssubstate s a in 
-        let n := SSexpiration ss in
-        now < n
-    | isValidDeliberation a => 
-        let ss := Ssubstate s a in 
-        let pf := SSmember (Ssubstate s professional) in 
-        let fc := SSmember (Ssubstate s facilitator) in 
+        let pf := SSmember (Ssubstate s ps) in 
+        let fc := SSmember (Ssubstate s fs) in 
         let dlb_ := SSdeliberation ss in
         match dlb_ with 
         | Some  dlb =>  
@@ -284,14 +366,6 @@ Definition valuation (x : var) (s : state) : bool :=
             (Ddeliberator dlb != set0)
         | None => false
         end           
-    | isTenuren a m  =>
-        let ss := Ssubstate s a in 
-        let m' := SStenure ss in 
-        match m' with 
-        | Some m'' => m'' == m 
-        | _ => false
-        end
-
     end.
 
 
