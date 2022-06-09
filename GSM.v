@@ -1,16 +1,42 @@
+
+
+
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 From mathcomp Require Export all_ssreflect.
-Require Export Currency Administration Timestamp.
-
-
 
 Set Implicit Arguments.
 Unset Strict Implicit.
 
+
+
+
+
+
+
 (********************)
 (* メタ・アサンプション *)
 (********************)
+
+
+
+Parameter limit_time' : nat.
+Definition limit_time := limit_time' + 1.
+Definition timestamp := ordinal limit_time.
+Inductive admin := Admin of nat.
+Inductive currency := Curr of nat.
+
+Definition plusc (x y : currency) :=
+    match x, y with 
+    | Curr x_, Curr y_ => Curr (x_ + y_)
+    end.
+    
+Definition minusc (x y : currency) :=
+    match x, y with 
+    | Curr x_, Curr y_ => Curr (x_ - y_)
+    end.   
+
+
 
 
 (* 市民 *)
@@ -109,6 +135,16 @@ Instance etaState : Settable state :=
 (* eqType's instantiation *)
 (**************************)
 
+Coercion nat_of_admin a := let : Admin n := a in n.
+Canonical admin_subType  := [newType for nat_of_admin ].
+Definition admin_eqMixin := Eval hnf in [eqMixin of admin by <:].
+Canonical admin_eqType := Eval hnf in EqType admin admin_eqMixin.
+
+Coercion nat_of_currency a := let : Curr n := a in n.
+Canonical currency_subType  := [newType for nat_of_currency ].
+Definition currency_eqMixin := Eval hnf in [eqMixin of currency by <:].
+Canonical currency_eqType := Eval hnf in EqType currency currency_eqMixin.
+
 Tactic Notation "mkCompEq"  :=
     refine (EqMixin (compareP _)) => x y;
     unfold decidable; decide equality; apply eq_comparable.
@@ -159,20 +195,20 @@ Parameter evalD : deliberation -> bool.
 
 Definition transv_  (p : proposal) (x : state)  :=
     match p with 
-    | PwithdrawTreasury n => x <| Streasury ::= subc n|>
-    | PdepositTreasury n => x <| Streasury ::= addc n|>
+    | PwithdrawTreasury n => x <| Streasury ::= minusc n|>
+    | PdepositTreasury n => x <| Streasury ::= plusc n|>
     | PwithdrawBudget t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= subc n|> in 
+        let ss' := ss <|SSbudget ::= minusc n|> in 
         x <| Ssubstate ::= t ↦ ss'|>   
     | PdepositBudget t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= addc n|> in 
+        let ss' := ss <|SSbudget ::= plusc n|> in 
         x <| Ssubstate ::= t ↦ ss'|>      
     | Pallocate t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= subc n|> in 
-        x  <| Ssubstate ::= t ↦ ss'|> <| Streasury ::= subc n|>
+        let ss' := ss <|SSbudget ::= minusc n|> in 
+        x  <| Ssubstate ::= t ↦ ss'|> <| Streasury ::= minusc n|>
    
     | PassignMember t m => 
         let ss := Ssubstate x t in 
@@ -267,7 +303,7 @@ Inductive var :=
 
 Definition valuation (x : var) (s : state) : bool :=
     match x with
-    | hasNoBudget t => let ss := Ssubstate s t in SSbudget ss == noCurr
+    | hasNoBudget t => let ss := Ssubstate s t in SSbudget ss == Curr 0
     | hasNoDeliberation t => let ss := Ssubstate s t in SSdeliberation ss == None
     | hasNoTenureWoker t => let ss := Ssubstate s t in SStenureWorker ss == set0
     | treasuryRestriction t =>
@@ -367,6 +403,3 @@ Definition valuation (x : var) (s : state) : bool :=
         | None => false
         end           
     end.
-
-
-
