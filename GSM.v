@@ -77,11 +77,14 @@ Inductive proposal  :=
     (* 役職への任免・罷免 *)
     | PassignMember : admin -> citizen -> proposal
     | PdismissalMember : admin -> citizen -> proposal    
-    | PasignTenureWorker : admin -> citizen -> timestamp -> proposal    
+    | PassignTenureWorker : admin -> citizen -> timestamp -> proposal    
     | PdismissalTenureWorker : admin -> citizen -> proposal
     (* 市民登録・解除 *)
     | Pregisrate : citizen -> proposal
-    | Pderegisrate : citizen -> proposal.
+    | Pderegisrate : citizen -> proposal
+    (* 行政の追加・削除 *)
+    | PgenAdmin : admin -> proposal 
+    | PslashAdmin : admin -> proposal.
 
 
 
@@ -111,12 +114,14 @@ Record subState := mkSubState {
     SStenureWorker : {set citizen * timestamp};
 }.
 
+Definition empty_subState := mkSubState (Curr 0) set0 None set0.
+
 
 Record state := mkState{
     Streasury : currency;
     Smember : {set citizen};
     Sdeliberation : option deliberation;
-    Ssubstate : admin -> subState
+    Ssubstate : admin -> option subState
 }.
 
 (*************************************)
@@ -172,12 +177,12 @@ Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqM
 
 
 Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
-    fun f => fun d' =>  if d == d' then r else f d'.
+    fun f => fun d' =>  if d == d' then Some r else (f d').
 Notation "t ↦ b" := (subst t b)(at level 10).
 
 
-Lemma subst_lemma {dom ran : finType} (f : dom -> ran) (d : dom) (r : ran) :
-    let f' := subst d r f in f' d = r.
+Lemma subst_lemma {dom ran : finType} (f : dom -> option ran) (d : dom) (r : ran) :
+    let f' := subst d r f in f' d = Some r.
 Proof. rewrite /subst eq_refl => //. Qed.
 
 Fixpoint findExpiration_ (p : seq (citizen * timestamp)) (c : citizen) : option timestamp :=
@@ -199,41 +204,82 @@ Definition transv_  (p : proposal) (x : state)  :=
     | PdepositTreasury n => x <| Streasury ::= plusc n|>
     | PwithdrawBudget t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= minusc n|> in 
-        x <| Ssubstate ::= t ↦ ss'|>   
+        match ss with 
+        | None => x 
+        | Some ss => 
+            let ss' := ss <|SSbudget ::= minusc n|> in 
+            x <| Ssubstate ::= t ↦ ss'|>  
+        end 
     | PdepositBudget t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= plusc n|> in 
-        x <| Ssubstate ::= t ↦ ss'|>      
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let ss' := ss <|SSbudget ::= plusc n|> in 
+            x <| Ssubstate ::= t ↦ ss'|>  
+        end    
     | Pallocate t n => 
         let ss := Ssubstate x t in 
-        let ss' := ss <|SSbudget ::= minusc n|> in 
-        x  <| Ssubstate ::= t ↦ ss'|> <| Streasury ::= minusc n|>
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let ss' := ss <|SSbudget ::= minusc n|> in 
+            x  <| Ssubstate ::= t ↦ ss'|> <| Streasury ::= minusc n|>
+        end
    
     | PassignMember t m => 
         let ss := Ssubstate x t in 
-        let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
-        x <| Ssubstate ::= t ↦ ss'|>     
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
+            x <| Ssubstate ::= t ↦ ss'|>   
+        end  
     | PdismissalMember t m => 
         let ss := Ssubstate x t in 
-        let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
-        x <| Ssubstate ::= t ↦ ss'|>
-    | PasignTenureWorker t m n =>
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
+            x <| Ssubstate ::= t ↦ ss'|>
+        end
+    | PassignTenureWorker t m n =>
         let tw := (m,n) in 
         let ss := Ssubstate x t in 
-        let tws := SStenureWorker ss in 
-        x  <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tw |: tws|>) |>
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let tws := SStenureWorker ss in 
+            x  <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tw |: tws|>) |>
+        end
 
     | PdismissalTenureWorker t m => 
         let ss := Ssubstate x t in 
-        let tws := SStenureWorker ss in 
-        let n := findExpiration tws m in 
-        match n with 
+        match ss with 
         | None => x 
-        | Some n' => x <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tws :\ (m,n')|>) |>
+        | Some ss =>  
+            let tws := SStenureWorker ss in 
+            let n := findExpiration tws m in 
+            match n with 
+            | None => x 
+            | Some n' => x <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tws :\ (m,n')|>) |>
+            end
         end
     | Pregisrate m => x <| Smember ::= fun mem => m |: mem|>
     | Pderegisrate m => x <| Smember ::= fun mem => mem :\ m|>
+    | PgenAdmin t => 
+        let ss := Ssubstate x t in 
+        match ss with 
+        | None => x <|Ssubstate ::= t ↦ empty_subState|>
+        | Some _ => x        
+        end
+    | PslashAdmin t =>
+        let ss := Ssubstate x t in 
+        match ss with 
+        | None => x 
+        | Some _ => x <|Ssubstate ::= fun f => fun t' => if t' == t then None else f t'|>
+        end
+
     end.
 
 
@@ -242,21 +288,29 @@ Definition transv_  (p : proposal) (x : state)  :=
 Definition trans_ (a : act) (x : state) :=
     match a with 
     | AsubPropose adm a' p_ f_ d_ n => 
-        let ss := Ssubstate x adm in   
-        let mem := SSmember ss in 
-        let p := random_choice mem p_ in 
-        let f := random_choice mem f_ in 
-        let d := random_choice_set mem d_ n in 
-        let ss' := ss <|SSdeliberation := Some (mkDlb a' p f d)|> in 
-        x <| Ssubstate ::= adm ↦ ss'|>
+        let ss := Ssubstate x adm in  
+        match ss with 
+        | None => x 
+        | Some ss =>  
+            let mem := SSmember ss in 
+            let p := random_choice mem p_ in 
+            let f := random_choice mem f_ in 
+            let d := random_choice_set mem d_ n in 
+            let ss' := ss <|SSdeliberation := Some (mkDlb a' p f d)|> in 
+            x <| Ssubstate ::= adm ↦ ss'|>
+        end
 
     | AsubDeliberate adm => 
         let ss := Ssubstate x adm in
-        let dlb_ := SSdeliberation ss in
-        match dlb_ with 
-        | Some dlb =>  
-            if evalD dlb then transv_ (Dproposal dlb) x else x
-        | None => x
+        match ss with 
+        | None => x 
+        | Some ss => 
+            let dlb_ := SSdeliberation ss in
+            match dlb_ with 
+            | Some dlb =>  
+                if evalD dlb then transv_ (Dproposal dlb) x else x
+            | None => x
+            end
         end
 
     | AglobalPropose a' p_ f_ d_ n =>
@@ -303,103 +357,164 @@ Inductive var :=
 
 Definition valuation (x : var) (s : state) : bool :=
     match x with
-    | hasNoBudget t => let ss := Ssubstate s t in SSbudget ss == Curr 0
-    | hasNoDeliberation t => let ss := Ssubstate s t in SSdeliberation ss == None
-    | hasNoTenureWoker t => let ss := Ssubstate s t in SStenureWorker ss == set0
+    | hasNoBudget t => 
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss => SSbudget ss == Curr 0
+        end 
+    | hasNoDeliberation t => 
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss => SSdeliberation ss == None
+        end
+    | hasNoTenureWoker t => 
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss => SStenureWorker ss == set0
+        end
     | treasuryRestriction t =>
-            let dlb := SSdeliberation (Ssubstate s t) 
-            in match dlb with 
+            let ss := Ssubstate s t in
+            match ss with 
             | None => true 
-            | Some dlb' => let prp := Dproposal dlb' in
-                match prp with 
-                | PwithdrawTreasury  _ => false 
-                | PdepositTreasury _ => false  
-                | _ => false
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | PwithdrawTreasury  _ => false 
+                    | PdepositTreasury _ => false  
+                    | _ => false
+                    end
                 end
             end
     | budgetRestriction t =>
-            let dlb := SSdeliberation (Ssubstate s t) 
-            in match dlb with 
+            let ss := Ssubstate s t in
+            match ss with 
             | None => true 
-            | Some dlb' => let prp := Dproposal dlb' in
-                match prp with 
-                | PwithdrawBudget t' _ => t == t' 
-                | PdepositBudget t'  _ => t == t'  
-                | _ => true
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | PwithdrawBudget t' _ => t == t' 
+                    | PdepositBudget t'  _ => t == t'  
+                    | _ => true
+                    end
                 end
             end
     | allocateRestriction t =>
-            let dlb := SSdeliberation (Ssubstate s t) 
-            in match dlb with 
+            let ss := Ssubstate s t in
+            match ss with 
             | None => true 
-            | Some dlb' => let prp := Dproposal dlb' in
-                match prp with 
-                | Pallocate _ _ => false
-                | _ => true
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | Pallocate _ _ => false
+                    | _ => true
+                    end
                 end
             end
     | assignRestriction t => 
-        let dlb := SSdeliberation (Ssubstate s t) 
-            in match dlb with 
+        let ss := Ssubstate s t in
+            match ss with 
             | None => true 
-            | Some dlb' => let prp := Dproposal dlb' in
-                match prp with 
-                | PassignMember  _ _ => false
-                | PdismissalMember  _ _ => false
-                | PasignTenureWorker  _ _ _ => false
-                | PdismissalTenureWorker  _ _ => false
-                | _ => true
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | PassignMember  _ _ => false
+                    | PdismissalMember  _ _ => false
+                    | PassignTenureWorker  _ _ _ => false
+                    | PdismissalTenureWorker  _ _ => false
+                    | _ => true
+                    end
                 end
             end
     | regisrateRestriction t => 
-        let dlb := SSdeliberation (Ssubstate s t) 
-            in match dlb with 
+        let ss := Ssubstate s t in
+            match ss with 
             | None => true 
-            | Some dlb' => let prp := Dproposal dlb' in
-                match prp with 
-                | Pregisrate _ => false
-                | Pderegisrate _ => false
-                | _ => true
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | Pregisrate _ => false
+                    | Pderegisrate _ => false
+                    | _ => true
+                    end
                 end
             end
     | isAssigned a m => 
-        let ss := Ssubstate s a in 
-        let mem := SSmember ss in         
-        m \in mem
-    | isProposed adm a => 
-        let ss := Ssubstate s adm in 
-        let dlb_ := SSdeliberation ss in
-        match dlb_ with 
-        | Some  dlb =>  
-            a == Dproposal dlb
-        | None => false
+        let ss := Ssubstate s a in
+        match ss with 
+        | None => true
+        | Some ss =>
+            let mem := SSmember ss in         
+            m \in mem
         end
+    | isProposed adm a => 
+        let ss := Ssubstate s adm in
+        match ss with 
+        | None => true
+        | Some ss =>
+            let dlb_ := SSdeliberation ss in
+            match dlb_ with 
+            | Some  dlb =>  
+                a == Dproposal dlb
+            | None => false
+            end
+        end 
     | isTenureWorker t m  =>
-        let ss := Ssubstate s t in 
-        let tws := SStenureWorker ss in 
-        let n := findExpiration tws m in
-        match n with 
-        | Some _ => true 
-        | _ => false
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss =>
+            let tws := SStenureWorker ss in 
+            let n := findExpiration tws m in
+            match n with 
+            | Some _ => true 
+            | _ => false
+            end
         end
     | withinExpiration t m => 
-        let ss := Ssubstate s t in 
-        let tws := SStenureWorker ss in 
-        let tw := findExpiration tws m in
-        match tw with 
-        | None => false 
-        | Some n => now < n 
-        end 
-    | isValidDeliberation a ps fs => 
-        let ss := Ssubstate s a in 
-        let pf := SSmember (Ssubstate s ps) in 
-        let fc := SSmember (Ssubstate s fs) in 
-        let dlb_ := SSdeliberation ss in
-        match dlb_ with 
-        | Some  dlb =>  
-            (Dprofessional dlb \in pf) && 
-            (Dfacilitator dlb \in fc) &&
-            (Ddeliberator dlb != set0)
-        | None => false
-        end           
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss =>
+            let tws := SStenureWorker ss in 
+            let tw := findExpiration tws m in
+            match tw with 
+            | None => false 
+            | Some n => now < n 
+            end 
+        end
+    | isValidDeliberation t ps fs => 
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss =>
+            let ssp := Ssubstate s ps in 
+            let ssf := Ssubstate s fs in 
+            match ssp, ssf with 
+            | Some ssp, Some ssf => 
+                let pf := SSmember ssp in 
+                let fc := SSmember ssf in 
+                let dlb_ := SSdeliberation ss in
+                match dlb_ with 
+                | Some  dlb =>  
+                    (Dprofessional dlb \in pf) && 
+                    (Dfacilitator dlb \in fc) &&
+                    (Ddeliberator dlb != set0)
+                | None => false
+                end     
+            | _ , _ => false 
+            end 
+        end     
     end.
