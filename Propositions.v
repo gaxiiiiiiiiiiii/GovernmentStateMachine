@@ -27,6 +27,7 @@ Definition AllocateRestriction t := (Var (allocateRestriction t)).
 Definition AssignRestriction t := (Var (assignRestriction t)).
 Definition RegisterRestriction t := (Var (registerRestriction t)).
 Definition AdminControlRestriction t := (Var (adminControlRestriction t)).
+Definition GlobalRestriction := (Var globalRestriction).
 
 
 Definition IsAssigned r m := (Var (isAssigned r m)).
@@ -98,7 +99,7 @@ Definition RegisterSpec :=
 
 (* 行政の仕様全体 *)    
 Definition SPEC :=
-    AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec).
+    AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec ∧ GlobalRestriction).
 
 
 (*******************)

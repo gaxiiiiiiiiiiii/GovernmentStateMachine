@@ -349,7 +349,8 @@ Inductive var :=
     | registerRestriction : admin -> var
     | adminControlRestriction : admin -> var
     (* globalStateに課す制約 *)
-    (* より汎用的に表現できるようにしたいけど、ひとまず *)
+    (* より汎用的に表現できるようにしたいけど、ひとまずregisterの制約 *)
+    | globalRestriction : var
 
     | isAssigned : admin -> citizen -> var
     | isProposed : admin -> proposal -> var 
@@ -476,6 +477,19 @@ Definition valuation (x : var) (s : state) : bool :=
                     end
                 end
             end
+    | globalRestriction =>
+        let dlb := Sdeliberation s in
+        match dlb with 
+        | None => true 
+        | Some dlb => let prp := Dproposal dlb in 
+            match prp with 
+            | Pregister  _ => false 
+            | Pderegister _ => false 
+            | PwithdrawBudget _ _ => false 
+            | PdepositBudget  _ _ => false
+            | _ => true 
+            end 
+        end
     
     
     | isAssigned a m => 
