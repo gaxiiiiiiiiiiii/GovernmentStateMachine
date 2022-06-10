@@ -80,8 +80,8 @@ Inductive proposal  :=
     | PassignTenureWorker : admin -> citizen -> timestamp -> proposal    
     | PdismissalTenureWorker : admin -> citizen -> proposal
     (* 市民登録・解除 *)
-    | Pregisrate : citizen -> proposal
-    | Pderegisrate : citizen -> proposal
+    | Pregister : citizen -> proposal
+    | Pderegister : citizen -> proposal
     (* 行政の追加・削除 *)
     | PgenAdmin : admin -> proposal 
     | PslashAdmin : admin -> proposal.
@@ -265,8 +265,8 @@ Definition transv_  (p : proposal) (x : state)  :=
             | Some n' => x <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tws :\ (m,n')|>) |>
             end
         end
-    | Pregisrate m => x <| Smember ::= fun mem => m |: mem|>
-    | Pderegisrate m => x <| Smember ::= fun mem => mem :\ m|>
+    | Pregister m => x <| Smember ::= fun mem => m |: mem|>
+    | Pderegister m => x <| Smember ::= fun mem => mem :\ m|>
     | PgenAdmin t => 
         let ss := Ssubstate x t in 
         match ss with 
@@ -341,12 +341,15 @@ Inductive var :=
     | hasNoDeliberation : admin -> var
     | hasNoTenureWoker : admin -> var
     | hasNoMember : admin -> var
-    (* 熟議できる提案の制限 *)
+    (* 行政機関が熟議できる提案の制限 *)
     | treasuryRestriction : admin -> var 
     | budgetRestriction : admin -> var
     | allocateRestriction : admin -> var
     | assignRestriction : admin -> var
-    | regisrateRestriction : admin -> var
+    | registerRestriction : admin -> var
+    | adminControlRestriction : admin -> var
+    (* globalStateに課す制約 *)
+    (* より汎用的に表現できるようにしたいけど、ひとまず *)
 
     | isAssigned : admin -> citizen -> var
     | isProposed : admin -> proposal -> var 
@@ -443,7 +446,7 @@ Definition valuation (x : var) (s : state) : bool :=
                     end
                 end
             end
-    | regisrateRestriction t => 
+    | registerRestriction t => 
         let ss := Ssubstate s t in
             match ss with 
             | None => true 
@@ -452,12 +455,29 @@ Definition valuation (x : var) (s : state) : bool :=
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
                     match prp with 
-                    | Pregisrate _ => false
-                    | Pderegisrate _ => false
+                    | Pregister _ => false
+                    | Pderegister _ => false
                     | _ => true
                     end
                 end
             end
+    | adminControlRestriction t => 
+        let ss := Ssubstate s t in
+            match ss with 
+            | None => true 
+            | Some ss => let dlb := SSdeliberation ss
+                in match dlb with 
+                | None => true 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | PgenAdmin _ => false
+                    | PslashAdmin _ => false
+                    | _ => true
+                    end
+                end
+            end
+    
+    
     | isAssigned a m => 
         let ss := Ssubstate s a in
         match ss with 

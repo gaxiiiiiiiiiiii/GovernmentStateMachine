@@ -25,7 +25,8 @@ Definition TreasuryRestriction  t := (Var (treasuryRestriction t)).
 Definition BudgetRestriction t := (Var (budgetRestriction t)).
 Definition AllocateRestriction t := (Var (allocateRestriction t)).
 Definition AssignRestriction t := (Var (assignRestriction t)).
-Definition RegisrateRestriction t := (Var (regisrateRestriction t)).
+Definition RegisterRestriction t := (Var (registerRestriction t)).
+Definition AdminControlRestriction t := (Var (adminControlRestriction t)).
 
 
 Definition IsAssigned r m := (Var (isAssigned r m)).
@@ -50,8 +51,8 @@ Notation DEPOSITT := PdepositTreasury.
 Notation WITHDRAWB := PwithdrawBudget.
 Notation DEPOSETB := PdepositBudget.
 Notation ALLOCATE := Pallocate.
-Notation REGISRATE := Pregisrate.
-Notation DEREGISRATE := Pderegisrate.
+Notation REGISRATE := Pregister.
+Notation DEREGISRATE := Pderegister.
 
 (*****************)
 (* specification *) 
@@ -80,23 +81,24 @@ Definition TreasuryLAR := LAR TreasuryRestriction.
 Definition AllocateLAR := LAR AllocateRestriction.
 Definition BudgetLAR := LAR BudgetRestriction.
 Definition AssignLAR := LAR AssignRestriction.
+Definition AdminControlLAR := LAR AdminControlRestriction.
 
 Definition LocalAdminSpec := 
-    TreasuryLAR ∧ AllocateLAR ∧ BudgetLAR ∧ AssignLAR.
+    TreasuryLAR ∧ AllocateLAR ∧ BudgetLAR ∧ AssignLAR ∧ AdminControlLAR.
 
 
 (* 市民登録・解除ができるのはREGISRATIONだけ *)
 (* ※グローバルな熟議でも市民登録・解除の提案ができてしまうので、要修正 *)
-Definition RegisrateSpec :=
-    RegisrateRestriction POLICE ∧
-    RegisrateRestriction JUDICIARY ∧
-    RegisrateRestriction MILITARY ∧
-    RegisrateRestriction MEDIA ∧
-    RegisrateRestriction EDUCATION.
+Definition RegisterSpec :=
+    RegisterRestriction POLICE ∧
+    RegisterRestriction JUDICIARY ∧
+    RegisterRestriction MILITARY ∧
+    RegisterRestriction MEDIA ∧
+    RegisterRestriction EDUCATION.
 
 (* 行政の仕様全体 *)    
 Definition SPEC :=
-    AG (PoolSpec ∧ LocalAdminSpec ∧ RegisrateSpec).
+    AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec).
 
 
 (*******************)
@@ -114,28 +116,6 @@ Definition safety (bad : form) :=
     s |= AG (¬ bad).
 
 
-(* 任意の状態から任意の状態遷移を経ても、いずれ条件goodを満たす状態に至る *)
-Definition liveness (good : form) :=
-    s |= AF good.
-
- 
-(* 罷免が提案されている *)
-Definition IsDissmissProposed adm m :=
-    IsProposed global (DISMISSAL adm m).
-
-
-(* 罷免提案が否決される *)
-Definition RejectDismissal := 
-    IsDissmissProposed adm m ∧ [DELIBERATE global] (IsAssigned adm m).
-
-Definition IsDectator :=
-    AG RejectDismissal.
-
-(*  任期満了前の罷免提案は否決される *)    
-Definition unndissmissibleBeforExpiation :=
-    WithinExpiration adm → RejectDismissal.
-
-End Proposition.
 
 
 
