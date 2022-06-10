@@ -8,22 +8,21 @@ From mathcomp Require Export all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 
-
-
-
-
-
-
 (********************)
 (* メタ・アサンプション *)
 (********************)
 
 
-
+(* finTypeのtimestamp *)
 Parameter limit_time' : nat.
 Definition limit_time := limit_time' + 1.
 Definition timestamp := ordinal limit_time.
+Parameter now : timestamp.
+
+(* 各行政機関を表す変数 *)
 Inductive admin := Admin of nat.
+
+(* 通貨 *)
 Inductive currency := Curr of nat.
 
 Definition plusc (x y : currency) :=
@@ -37,13 +36,9 @@ Definition minusc (x y : currency) :=
     end.   
 
 
-
-
 (* 市民 *)
 Parameter citizen : finType.
 
-(* 現在時刻を返す関数 *)
-Parameter now : timestamp.
 
 (* 乱数 *)
 Definition random := Type.
@@ -100,7 +95,7 @@ Inductive act :=
 (* 状態と熟議 *)
 (************)
 
-Record deliberation := mkDlb{
+Record comitee := mkDlb{
     Dproposal : proposal;
     Dprofessional : citizen;
     Dfacilitator : citizen;
@@ -110,7 +105,7 @@ Record deliberation := mkDlb{
 Record subState := mkSubState {
     SSbudget : currency;
     SSmember : {set citizen};
-    SSdeliberation : option deliberation;
+    SScomitee : option comitee;
     SStenureWorker : {set citizen * timestamp};
 }.
 
@@ -120,7 +115,7 @@ Definition empty_subState := mkSubState (Curr 0) set0 None set0.
 Record state := mkState{
     Streasury : currency;
     Smember : {set citizen};
-    Sdeliberation : option deliberation;
+    Scomitee : option comitee;
     Ssubstate : admin -> option subState
 }.
 
@@ -129,11 +124,11 @@ Record state := mkState{
 (*************************************)
 
 Instance etaSubState : Settable subState :=
-    settable! mkSubState <SSbudget; SSmember; SSdeliberation; SStenureWorker>.        
+    settable! mkSubState <SSbudget; SSmember; SScomitee; SStenureWorker>.        
 
 Instance etaState : Settable state := 
     settable! mkState 
-        < Streasury; Smember; Sdeliberation;Ssubstate >.
+        < Streasury; Smember; Scomitee;Ssubstate >.
 
 
 (**************************)
@@ -160,8 +155,8 @@ Definition proposal_eqMixin : eqMixin proposal. Proof. mkCompEq. Qed.
 Canonical Structure proposal_eqType := Eval hnf in @EqType proposal proposal_eqMixin.
 
 
-Definition deliberation_eqMixin  : eqMixin deliberation. Proof. mkCompEq. Qed.
-Canonical Structure deliberation_eqType := Eval hnf in @EqType deliberation deliberation_eqMixin.        
+Definition comitee_eqMixin  : eqMixin comitee. Proof. mkCompEq. Qed.
+Canonical Structure comitee_eqType := Eval hnf in @EqType comitee comitee_eqMixin.        
 
 Definition subState_eqMixin : eqMixin subState. Proof. 
     refine (EqMixin (compareP _)) => x y.
@@ -195,7 +190,7 @@ Definition findExpiration (p : {set citizen * timestamp}) (c : citizen) : option
     findExpiration_ (enum p) c.
 
 
-Parameter evalD : deliberation -> bool.  
+Parameter evalD : comitee -> bool.  
 
 
 Definition transv_  (p : proposal) (x : state)  :=
@@ -296,7 +291,7 @@ Definition trans_ (a : act) (x : state) :=
             let p := random_choice mem p_ in 
             let f := random_choice mem f_ in 
             let d := random_choice_set mem d_ n in 
-            let ss' := ss <|SSdeliberation := Some (mkDlb a' p f d)|> in 
+            let ss' := ss <|SScomitee := Some (mkDlb a' p f d)|> in 
             x <| Ssubstate ::= adm ↦ ss'|>
         end
 
@@ -305,7 +300,7 @@ Definition trans_ (a : act) (x : state) :=
         match ss with 
         | None => x 
         | Some ss => 
-            let dlb_ := SSdeliberation ss in
+            let dlb_ := SScomitee ss in
             match dlb_ with 
             | Some dlb =>  
                 if evalD dlb then transv_ (Dproposal dlb) x else x
@@ -318,10 +313,10 @@ Definition trans_ (a : act) (x : state) :=
         let p := random_choice mem p_ in 
         let f := random_choice mem f_ in 
         let d := random_choice_set mem d_ n in 
-        x <|Sdeliberation := Some (mkDlb a' p f d)|>
+        x <|Scomitee := Some (mkDlb a' p f d)|>
 
     | AglobalDeliberate => 
-        let dlb := Sdeliberation x in 
+        let dlb := Scomitee x in 
         match dlb with 
         | None => x 
         | Some dlb_ => 
@@ -338,7 +333,7 @@ Definition trans a x y := y = trans_ a x.
 Inductive var :=
     (* substaeの状態の制限 *)
     | hasNoBudget : admin -> var
-    | hasNoDeliberation : admin -> var
+    | hasNoComitee : admin -> var
     | hasNoTenureWoker : admin -> var
     | hasNoMember : admin -> var
     (* 行政機関が熟議できる提案の制限 *)
@@ -349,14 +344,17 @@ Inductive var :=
     | registerRestriction : admin -> var
     | adminControlRestriction : admin -> var
     (* globalStateに課す制約 *)
-    (* より汎用的に表現できるようにしたいけど、ひとまずregisterの制約 *)
+    (* より汎用的に表現できるようにしたいけど、
+    ひとまずregisterとbudgetについての制約 *)
     | globalRestriction : var
 
     | isAssigned : admin -> citizen -> var
     | isProposed : admin -> proposal -> var 
     | isTenureWorker : admin -> citizen -> var
     | withinExpiration : admin -> citizen-> var  
-    | isValidDeliberation : admin -> admin -> admin -> var.
+    | isValidComitee : admin -> admin -> admin -> var.
+
+Locate "<?".
 
 
 
@@ -368,11 +366,11 @@ Definition valuation (x : var) (s : state) : bool :=
         | None => true
         | Some ss => SSbudget ss == Curr 0
         end 
-    | hasNoDeliberation t => 
+    | hasNoComitee t => 
         let ss := Ssubstate s t in
         match ss with 
         | None => true
-        | Some ss => SSdeliberation ss == None
+        | Some ss => SScomitee ss == None
         end
     | hasNoTenureWoker t => 
         let ss := Ssubstate s t in
@@ -390,7 +388,7 @@ Definition valuation (x : var) (s : state) : bool :=
             let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -405,7 +403,7 @@ Definition valuation (x : var) (s : state) : bool :=
             let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -420,7 +418,7 @@ Definition valuation (x : var) (s : state) : bool :=
             let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -434,7 +432,7 @@ Definition valuation (x : var) (s : state) : bool :=
         let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -451,7 +449,7 @@ Definition valuation (x : var) (s : state) : bool :=
         let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -466,7 +464,7 @@ Definition valuation (x : var) (s : state) : bool :=
         let ss := Ssubstate s t in
             match ss with 
             | None => true 
-            | Some ss => let dlb := SSdeliberation ss
+            | Some ss => let dlb := SScomitee ss
                 in match dlb with 
                 | None => true 
                 | Some dlb' => let prp := Dproposal dlb' in
@@ -478,7 +476,7 @@ Definition valuation (x : var) (s : state) : bool :=
                 end
             end
     | globalRestriction =>
-        let dlb := Sdeliberation s in
+        let dlb := Scomitee s in
         match dlb with 
         | None => true 
         | Some dlb => let prp := Dproposal dlb in 
@@ -505,7 +503,7 @@ Definition valuation (x : var) (s : state) : bool :=
         match ss with 
         | None => true
         | Some ss =>
-            let dlb_ := SSdeliberation ss in
+            let dlb_ := SScomitee ss in
             match dlb_ with 
             | Some  dlb =>  
                 a == Dproposal dlb
@@ -536,7 +534,7 @@ Definition valuation (x : var) (s : state) : bool :=
             | Some n => now < n 
             end 
         end
-    | isValidDeliberation t ps fs => 
+    | isValidComitee t ps fs => 
         let ss := Ssubstate s t in
         match ss with 
         | None => true
@@ -545,13 +543,13 @@ Definition valuation (x : var) (s : state) : bool :=
             let ssf := Ssubstate s fs in 
             match ssp, ssf with 
             | Some ssp, Some ssf => 
-                let pf := SSmember ssp in 
-                let fc := SSmember ssf in 
-                let dlb_ := SSdeliberation ss in
+                let pf := SStenureWorker ssp in 
+                let fc := SStenureWorker ssf in 
+                let dlb_ := SScomitee ss in
                 match dlb_ with 
                 | Some  dlb =>  
-                    (Dprofessional dlb \in pf) && 
-                    (Dfacilitator dlb \in fc) &&
+                    [exists n,  (Dprofessional dlb, n) \in pf] && 
+                    [exists n, (Dfacilitator dlb, n) \in fc] &&
                     (Ddeliberator dlb != set0)
                 | None => false
                 end     

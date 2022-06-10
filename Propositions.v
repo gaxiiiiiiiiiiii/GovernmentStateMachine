@@ -17,7 +17,7 @@ Definition EDUCATION := Admin 7.
 
 (* 原子命題 *)
 Definition HasNoBudget t := (Var (hasNoBudget t)).
-Definition HasNoDeliberation t := (Var (hasNoDeliberation t)).
+Definition HasNoComitee t := (Var (hasNoComitee t)).
 Definition HasNoTenureWoker t := (Var (hasNoTenureWoker t)).
 Definition HasNoMember t := (Var (hasNoMember t)).
 
@@ -34,7 +34,7 @@ Definition IsAssigned r m := (Var (isAssigned r m)).
 Definition WithinExpiration r m := (Var (withinExpiration r m)).
 Definition IsProposed adm a := (Var (isProposed adm a)).
 Definition IsTenurenWorker adm m := (Var (isTenureWorker adm m)).
-Definition IsValidDeliberation a p f:= (Var (isValidDeliberation a p f)).
+Definition IsValidComitee a p f:= (Var (isValidComitee a p f)).
 
 (* アクション *)
 Notation SPROPOSE := AsubPropose.
@@ -62,7 +62,7 @@ Notation DEREGISRATE := Pderegister.
 (* 人材プール *)
 
 Definition hasOnlyTenureWoker adm :=
-    HasNoBudget adm ∧ HasNoDeliberation adm ∧ HasNoMember adm.
+    HasNoBudget adm ∧ HasNoComitee adm ∧ HasNoMember adm.
 Notation IsPool := hasOnlyTenureWoker.
 Definition ProfessionalIsPool := IsPool PROFESSIONAL.
 Definition FacilitatorIsPool := IsPool FACILITATOR.
@@ -89,7 +89,6 @@ Definition LocalAdminSpec :=
 
 
 (* 市民登録・解除ができるのはREGISRATIONだけ *)
-(* ※グローバルな熟議でも市民登録・解除の提案ができてしまうので、要修正 *)
 Definition RegisterSpec :=
     RegisterRestriction POLICE ∧
     RegisterRestriction JUDICIARY ∧
