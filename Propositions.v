@@ -5,102 +5,98 @@ Require Export Semantic.
 (*************)
 
 (* type of substate *)
-Notation GLOBAL := global.
-Notation POLICE := police.
-Notation JUDICIARY := judiciary.
-Notation MILITARY := military.
-Notation MEDIA := media.
-Notation EDUCATION := education.
-Notation REGISTRATION := registration.
-Notation PROFESSIONAL := professional.
-Notation FACILITATOR := facilitator.
+Definition REGISTRATION := Admin 0.
+Definition PROFESSIONAL := Admin 1.
+Definition FACILITATOR := Admin 2.
+Definition POLICE := Admin 3.
+Definition JUDICIARY := Admin 4.
+Definition MILITARY := Admin 5.
+Definition MEDIA := Admin 6.
+Definition EDUCATION := Admin 7.
+
 
 (* 原子命題 *)
-Notation HasNoBudget t := (Var (hasNoBudget t)).
-Notation HasNoDeliberation t := (Var (hasNoDeliberation t)).
-Notation HasNoTenuren t := (Var (hasNoTenuren t)).
-Notation HasNoExpiration t := (Var (hasNoExpiration t)).
+Definition HasNoBudget t := (Var (hasNoBudget t)).
+Definition HasNoDeliberation t := (Var (hasNoDeliberation t)).
+Definition HasNoTenureWoker t := (Var (hasNoTenureWoker t)).
+Definition HasNoMember t := (Var (hasNoMember t)).
 
-Notation ProhibitWithdraw  t := (Var (prohibitWithdraw t)).
-Notation ProhibitDeposit t := (Var (prohibitDeposit t)).
-Notation ProhibitAllocate t := (Var (prohibitAllocate t)).
-Notation ProhibitAssign t := (Var (prohibitAssign t)).
-Notation ProhibitDismissal t := (Var (prohibitDismissal t)).
-Notation ProhibitSetTenure t := (Var (prohibitSetTenure t)).
-Notation ProhibitSetExpiration t := (Var (prohibitSetExpiration t)).
+Definition TreasuryRestriction  t := (Var (treasuryRestriction t)).
+Definition BudgetRestriction t := (Var (budgetRestriction t)).
+Definition AllocateRestriction t := (Var (allocateRestriction t)).
+Definition AssignRestriction t := (Var (assignRestriction t)).
+Definition RegisrateRestriction t := (Var (regisrateRestriction t)).
 
-Notation IsAssigned r m := (Var (isAssigned r m)).
-Notation WithinExpiration r := (Var (withinExpiration r)).
-Notation IsProposed adm a := (Var (isProposed adm a)).
-Notation IsTenuren adm m := (Var (isTenuren adm m)).
-Notation IsValidDeliberation := (Var isValidDeliberation).
+
+Definition IsAssigned r m := (Var (isAssigned r m)).
+Definition WithinExpiration r m := (Var (withinExpiration r m)).
+Definition IsProposed adm a := (Var (isProposed adm a)).
+Definition IsTenurenWorker adm m := (Var (isTenureWorker adm m)).
+Definition IsValidDeliberation a p f:= (Var (isValidDeliberation a p f)).
 
 (* アクション *)
-Notation PROPOS := Apropose.
-Notation DELIBERATE := Adeliberate.
+Notation SPROPOSE := AsubPropose.
+Notation SDELIBERATE := AsubDeliberate.
+Notation GPROPOSE := AglobalPropose.
+Notation GDELIBERATE := AglobalDeliberate.
 
 (* 提案 *)
-Notation ASSIGN := Passign.
-Notation DISMISSAL := Pdismissal.
-Notation WITHDRAW := Pwithdraw.
-Notation DEPOSIT := Pdeposit.
+Notation ASSIGNM := PassignMember.
+Notation DISMISSALM := PdismissalMember.
+Notation ASSIGNTW := PassignTenureWorker.
+Notation ADISMISSLATW := PdismissalTenureWorker.
+Notation WITHDRAWT := PwithdrawTreasury.
+Notation DEPOSITT := PdepositTreasury.
+Notation WITHDRAWB := PwithdrawBudget.
+Notation DEPOSETB := PdepositBudget.
 Notation ALLOCATE := Pallocate.
-Notation SET_TENURE := PsetTenure.
-Notation SET_EXPIRATION := PsetExpiration.
+Notation REGISRATE := Pregisrate.
+Notation DEREGISRATE := Pderegisrate.
 
 (*****************)
 (* specification *) 
 (*****************)
 
-(* professionalはmember以外の状態を持たない *)
-Definition ProfessionalHasNoBudget :=
-    AG (HasNoBudget PROFESSIONAL).
-Definition ProfessionalHasNoDeliberation :=
-    AG (HasNoDeliberation PROFESSIONAL).
-Definition ProfessionalHasNoTenuren :=
-    AG (HasNoTenuren PROFESSIONAL).
-Definition ProfessionalHasNoExpiration :=
-    AG (HasNoExpiration PROFESSIONAL).
-Definition ProfessionalSpec :=
-    ProfessionalHasNoBudget ∧ ProfessionalHasNoDeliberation ∧ 
-    ProfessionalHasNoTenuren ∧ ProfessionalHasNoExpiration.
+(* 人材プール *)
 
-(* facilitatorはmember以外の状態を持たない *)
-Definition FacilitatorHasNoBudget :=
-    AG (HasNoBudget FACILITATOR).
-Definition FacilitatorHasNoDeliberation :=
-    AG (HasNoDeliberation FACILITATOR).
-Definition FacilitatorHasNoTenuren :=
-    AG (HasNoTenuren FACILITATOR).
-Definition FacilitatorHasNoExpiration :=
-    AG (HasNoExpiration FACILITATOR).
-Definition FacilitatorSpec :=
-    FacilitatorHasNoBudget ∧ FacilitatorHasNoDeliberation ∧ 
-    FacilitatorHasNoTenuren ∧ FacilitatorHasNoExpiration.
+Definition hasOnlyTenureWoker adm :=
+    HasNoBudget adm ∧ HasNoDeliberation adm ∧ HasNoMember adm.
+Notation IsPool := hasOnlyTenureWoker.
+Definition ProfessionalIsPool := IsPool PROFESSIONAL.
+Definition FacilitatorIsPool := IsPool FACILITATOR.
 
-(* globalのだけがallocateの提案をできる *)    
-Definition PoliceIsProhibittedAllocate :=
-    AG (ProhibitAllocate POLICE).
-Definition JudiciaryIsProhibittedAllocate :=
-    AG (ProhibitAllocate JUDICIARY).
-Definition MilitaryIsProhibittedAllocate :=
-    AG (ProhibitAllocate MILITARY).
-Definition MediaIsProhibittedAllocate :=
-    AG (ProhibitAllocate MEDIA).
-Definition EducationIsProhibittedAllocate :=
-    AG (ProhibitAllocate EDUCATION).
-Definition RegistrationIsProhibittedAllocate :=
-    AG (ProhibitAllocate REGISTRATION).
-Definition AllocateSpec :=
-    PoliceIsProhibittedAllocate ∧ JudiciaryIsProhibittedAllocate ∧
-    MilitaryIsProhibittedAllocate ∧ MediaIsProhibittedAllocate ∧
-    EducationIsProhibittedAllocate ∧ RegistrationIsProhibittedAllocate.
+Definition PoolSpec := ProfessionalIsPool ∧ FacilitatorIsPool.
+
+(* global以外の行政の提案の制約 *)   
+
+Definition LAR restriction :=
+    restriction POLICE ∧
+    restriction JUDICIARY ∧
+    restriction MILITARY ∧
+    restriction MEDIA ∧
+    restriction EDUCATION ∧
+    restriction REGISTRATION.
+Definition TreasuryLAR := LAR TreasuryRestriction.
+Definition AllocateLAR := LAR AllocateRestriction.
+Definition BudgetLAR := LAR BudgetRestriction.
+Definition AssignLAR := LAR AssignRestriction.
+
+Definition LocalAdminSpec := 
+    TreasuryLAR ∧ AllocateLAR ∧ BudgetLAR ∧ AssignLAR.
 
 
+(* 市民登録・解除ができるのはREGISRATIONだけ *)
+(* ※グローバルな熟議でも市民登録・解除の提案ができてしまうので、要修正 *)
+Definition RegisrateSpec :=
+    RegisrateRestriction POLICE ∧
+    RegisrateRestriction JUDICIARY ∧
+    RegisrateRestriction MILITARY ∧
+    RegisrateRestriction MEDIA ∧
+    RegisrateRestriction EDUCATION.
+
+(* 行政の仕様全体 *)    
 Definition SPEC :=
-    ProfessionalHasNoBudget ∧ FacilitatorHasNoBudget ∧ AllocateSpec.    
-
-
+    AG (PoolSpec ∧ LocalAdminSpec ∧ RegisrateSpec).
 
 
 (*******************)
@@ -110,7 +106,7 @@ Definition SPEC :=
 
 Section Proposition.
 
-Variable (m : citizen) (adm : toss)  (s : state).
+Variable (m : citizen) (adm : admin)  (s : state).
 
 
 (* 任意の状態から任意の状態遷移を経ても、条件badを満たす状態にはならない *)
@@ -140,4 +136,6 @@ Definition unndissmissibleBeforExpiation :=
     WithinExpiration adm → RejectDismissal.
 
 End Proposition.
+
+
 

@@ -340,6 +340,7 @@ Inductive var :=
     | hasNoBudget : admin -> var
     | hasNoDeliberation : admin -> var
     | hasNoTenureWoker : admin -> var
+    | hasNoMember : admin -> var
     (* 熟議できる提案の制限 *)
     | treasuryRestriction : admin -> var 
     | budgetRestriction : admin -> var
@@ -374,6 +375,12 @@ Definition valuation (x : var) (s : state) : bool :=
         match ss with 
         | None => true
         | Some ss => SStenureWorker ss == set0
+        end
+    | hasNoMember t => 
+        let ss := Ssubstate s t in
+        match ss with 
+        | None => true
+        | Some ss => SSmember ss == set0
         end
     | treasuryRestriction t =>
             let ss := Ssubstate s t in
