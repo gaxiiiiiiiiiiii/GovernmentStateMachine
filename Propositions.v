@@ -101,19 +101,11 @@ Definition SPEC :=
     AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec ∧ GlobalRestriction).
 
 
-(*******************)
-(* 証明したい命題など *)
-(*******************)
 
 
-Section Proposition.
-
-Variable (m : citizen) (adm : admin)  (s : state).
 
 
-(* 任意の状態から任意の状態遷移を経ても、条件badを満たす状態にはならない *)
-Definition safety (bad : form) := 
-    s |= AG (¬ bad).
+
 
 
 

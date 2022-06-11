@@ -43,9 +43,9 @@ Notation "⊥" := Bot.
 Notation "¬ e" := (Not e)(at level 10).
 Notation "e1 ∧ e2" := (And e1 e2) (at level 30).
 Notation "e1 ∨ e2" := (Or e1 e2) (at level 30).
-Notation "[ a ] e" :=(AX a e)(at level 25).
-Notation "< a > e" := (EX a e) (at level 25).
-Notation "e1 → e2" := (Imp e1 e2) (at level 20).
+Notation "[ a ] e" :=(AX a e)(at level 20).
+Notation "< a > e" := (EX a e) (at level 20).
+Notation "e1 → e2" := (Imp e1 e2) (at level 15).
 
 
 

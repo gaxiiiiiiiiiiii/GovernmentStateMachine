@@ -39,7 +39,6 @@ Definition minusc (x y : currency) :=
 (* 市民 *)
 Parameter citizen : finType.
 
-
 (* 乱数 *)
 Definition random := Type.
 
@@ -84,10 +83,13 @@ Inductive proposal  :=
 
 
 Inductive act :=
+    (* グローバルな委員会への提案と熟議 *)
+    | AglobalPropose : proposal -> random -> random -> random -> nat -> act    
+    | AglobalDeliberate : act
+    (* subStateの委員会への提案と熟議 *)
     | AsubPropose : admin -> proposal -> random -> random -> random -> nat -> act
-    | AglobalPropose : proposal -> random -> random -> random -> nat -> act
-    | AsubDeliberate : admin -> act
-    | AglobalDeliberate : act.
+    | AsubDeliberate : admin -> act.
+    
 
 
 
@@ -119,9 +121,9 @@ Record state := mkState{
     Ssubstate : admin -> option subState
 }.
 
-(*************************************)
-(* updatable recortd's instantiation *)
-(*************************************)
+(*******************)
+(* 各種インスタンス化 *)
+(*+++++++++++++++++*)
 
 Instance etaSubState : Settable subState :=
     settable! mkSubState <SSbudget; SSmember; SScomitee; SStenureWorker>.        
@@ -130,10 +132,6 @@ Instance etaState : Settable state :=
     settable! mkState 
         < Streasury; Smember; Scomitee;Ssubstate >.
 
-
-(**************************)
-(* eqType's instantiation *)
-(**************************)
 
 Coercion nat_of_admin a := let : Admin n := a in n.
 Canonical admin_subType  := [newType for nat_of_admin ].
@@ -170,7 +168,7 @@ Canonical Structure subState_eqType := Eval hnf in @EqType subState subState_eqM
 (* 状態遷移 *)
 (**********)
 
-
+(* 便利な関数 *)
 Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
     fun f => fun d' =>  if d == d' then Some r else (f d').
 Notation "t ↦ b" := (subst t b)(at level 10).
@@ -190,6 +188,7 @@ Definition findExpiration (p : {set citizen * timestamp}) (c : citizen) : option
     findExpiration_ (enum p) c.
 
 
+(* 熟議の実行関数の存在を仮定 *)
 Parameter evalD : comitee -> bool.  
 
 
@@ -331,31 +330,27 @@ Definition trans a x y := y = trans_ a x.
 (***********)
 
 Inductive var :=
-    (* substaeの状態の制限 *)
+    (* substaeの持ち得る状態についての制約 *)
     | hasNoBudget : admin -> var
     | hasNoComitee : admin -> var
     | hasNoTenureWoker : admin -> var
     | hasNoMember : admin -> var
-    (* 行政機関が熟議できる提案の制限 *)
+    (* 行政機関が熟議できる提案の制約 *)
     | treasuryRestriction : admin -> var 
     | budgetRestriction : admin -> var
     | allocateRestriction : admin -> var
     | assignRestriction : admin -> var
     | registerRestriction : admin -> var
     | adminControlRestriction : admin -> var
-    (* globalStateに課す制約 *)
-    (* より汎用的に表現できるようにしたいけど、
-    ひとまずregisterとbudgetについての制約 *)
+    (* globalStateが熟議できる提案の制約 *)
     | globalRestriction : var
-
+    (* その他 *)
     | isAssigned : admin -> citizen -> var
     | isProposed : admin -> proposal -> var 
     | isTenureWorker : admin -> citizen -> var
     | withinExpiration : admin -> citizen-> var  
     | isValidComitee : admin -> admin -> admin -> var.
-
-Locate "<?".
-
+ 
 
 
 Definition valuation (x : var) (s : state) : bool :=
