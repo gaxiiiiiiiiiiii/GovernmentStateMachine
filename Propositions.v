@@ -99,15 +99,3 @@ Definition RegisterSpec :=
 (* 行政の仕様全体 *)    
 Definition SPEC :=
     AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec ∧ GlobalRestriction).
-
-
-
-
-
-
-
-
-
-
-
-

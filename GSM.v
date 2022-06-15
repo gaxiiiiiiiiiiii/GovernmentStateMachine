@@ -349,7 +349,8 @@ Inductive var :=
     | isProposed : admin -> proposal -> var 
     | isTenureWorker : admin -> citizen -> var
     | withinExpiration : admin -> citizen-> var  
-    | isValidComitee : admin -> admin -> admin -> var.
+    (* | isValidComitee : admin -> admin -> admin -> var *)
+    .
  
 
 
@@ -529,7 +530,7 @@ Definition valuation (x : var) (s : state) : bool :=
             | Some n => now < n 
             end 
         end
-    | isValidComitee t ps fs => 
+    (* | isValidComitee t ps fs => 
         let ss := Ssubstate s t in
         match ss with 
         | None => true
@@ -550,5 +551,5 @@ Definition valuation (x : var) (s : state) : bool :=
                 end     
             | _ , _ => false 
             end 
-        end     
+        end      *)
     end.
