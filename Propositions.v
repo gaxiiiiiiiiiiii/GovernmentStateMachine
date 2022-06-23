@@ -34,7 +34,7 @@ Definition IsAssigned r m := (Var (isAssigned r m)).
 Definition WithinExpiration r m := (Var (withinExpiration r m)).
 Definition IsProposed adm a := (Var (isProposed adm a)).
 Definition IsTenurenWorker adm m := (Var (isTenureWorker adm m)).
-Definition IsValidComitee a p f:= (Var (isValidComitee a p f)).
+(* Definition IsValidComitee a p f:= (Var (isValidComitee a p f)). *)
 
 (* アクション *)
 Notation SPROPOSE := AsubPropose.
@@ -46,7 +46,7 @@ Notation GDELIBERATE := AglobalDeliberate.
 Notation ASSIGNM := PassignMember.
 Notation DISMISSALM := PdismissalMember.
 Notation ASSIGNTW := PassignTenureWorker.
-Notation ADISMISSLATW := PdismissalTenureWorker.
+Notation DISMISSLATW := PdismissalTenureWorker.
 Notation WITHDRAWT := PwithdrawTreasury.
 Notation DEPOSITT := PdepositTreasury.
 Notation WITHDRAWB := PwithdrawBudget.
@@ -99,3 +99,33 @@ Definition RegisterSpec :=
 (* 行政の仕様全体 *)    
 Definition SPEC :=
     AG (PoolSpec ∧ LocalAdminSpec ∧ RegisterSpec ∧ GlobalRestriction).
+
+Section Dictatorship.
+
+Variable m : citizen.
+Variable adm : admin.
+
+Definition assigned : form := 
+    (Var (isAssigned adm m)).
+
+Definition proposed : form :=
+    Var (isProposed adm (PdismissalMember adm m)).
+
+Definition deliberate : act :=
+    AsubDeliberate adm.
+
+Definition undismissible : form :=
+    proposed → [deliberate]assigned.
+
+Definition NotDictatorial : form :=
+    assigned → AF (¬ undismissible).
+
+End Dictatorship.
+
+Check NotDictatorial.
+
+Definition soundness :=
+    forall s m adm, s |= NotDictatorial m adm.
+
+
+    
