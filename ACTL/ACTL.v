@@ -189,7 +189,10 @@ Notation "'AF' f" := (f ∨ AF [any] f)(at level 50).
 Notation "'EG' f" := (¬ AF ¬ f)(at level 50).
 Notation "'AG' f" := (¬ EF ¬ f)(at level 50).
 
-Notation "f 'EU' f'" := (E (f U f'))(at level 50).
+Notation "f 'EU' f'" := (f' ∨ (f ∧ (EX (E (f U f')))))(at level 50).
+Notation "f 'AU' f'" := (f' ∨ (f ∧ (AX (A (f U f')))))(at level 50).
+Notation "f 'EW' f'" := (¬ ((¬ f') AU ((¬ f) ∧ (¬ f'))))(at level 50).
+Notation "f 'AW' f'" := (¬ ((¬ f') EU ((¬ f) ∧ (¬ f'))))(at level 50).
 
 
 Theorem tau_refl s :
@@ -324,7 +327,62 @@ Proof.
         constructor; try unfold sata; auto.
     +   simpl in *; subst s0 a.
         apply IHHU; symmetry; apply tau_eq; auto.
-Qed.   
+Qed.  
+
+Theorem axiomAXEX f :
+    |= (AX f) → (EX f).
+Proof.
+    unfold sat; intros s H; fold (sat (trans := trans)) in *.
+    remember (Run s (nilp s tau s (tau_refl s))).
+    apply not_ex_all_not with (n := r) in H.
+    apply not_and_or in H.
+    induction H; simpl in *.
+    +   contradiction H; subst; auto.
+    +   apply not_and_or in H; induction H; [apply NNPP; intro F; apply H; auto|].
+        apply NNPP; intro F; apply H; constructor; unfold sata; auto; simpl.
+        intro F_; apply F.
+        exists r; subst; repeat split; constructor; unfold sata; auto.
+Qed.        
+
+Ltac  satisfy := unfold sat; fold (sat (trans := trans)).
+
+Theorem axiomAX f :
+    |= f -> |= AX f.
+Proof.
+    satisfy; intros H s F.
+    induction F as [r [Hr [_ HU]]].
+    induction HU; eauto; simpl in *; subst.
+    apply IHHU; symmetry; apply tau_eq; auto.
+Qed.
+
+
+Theorem AU_ind  f g h :
+    |= (g ∨ (f ∧ AX h)) → h -> |= (f AU g) → h.
+Proof.
+    satisfy; intros H s H'. 
+    apply H; clear H.
+    induction H';  [left|right]; auto.
+    induction H; split; auto.
+    intro F; apply H0; clear H0. 
+    induction F as [r [Hr [_ HU]]].
+    exists r; repeat split; auto; subst.
+    destruct r,p; inversion_clear HU; simpl in *; subst. 
+    +   constructor; auto; simpl.
+        apply ex_not_not_all.
+        exists (Run s' (nilp s' tau s' (tau_refl s'))); simpl.
+        intro F.
+        specialize (F (eq_refl s')).
+        induction F.
+        inversion H3; simpl in *.
+Admitted.        
+
+
+
+
+
+    
+
+
 
 End theorems.
 
