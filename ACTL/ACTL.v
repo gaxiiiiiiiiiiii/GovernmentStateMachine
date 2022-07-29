@@ -1,5 +1,6 @@
 
 Require Export Classical.
+Require Import Coq.Setoids.Setoid.
 
 Module ACTL.
 Section Def.
@@ -85,16 +86,6 @@ Inductive Until (f f' : state -> Prop) (chi chi' : action_form) : run -> Prop :=
         Until f f' chi chi' (Run s (consp s a s' H p)).
 
 
-CoInductive Unless (f f' : state -> Prop) (chi chi' : action_form) : run -> Prop :=
-    | unless_here r : 
-        sata (headAction r) chi' -> f' (nextState r) -> Unless f f' chi chi' r
-    | unless_there s a s' H p: 
-        sata a chi -> f s' -> Unless f f' chi chi' (Run s' p) -> 
-        Unless f f' chi chi' (Run s (consp s a s' H p)).
-
-
-
-
 (******************** ACTL ********************)
 
 Inductive form :=
@@ -108,8 +99,8 @@ Inductive form :=
     | all : formr -> form
 
 with formr :=
-    | until : form -> form -> action_form -> action_form -> formr
-    | unless: form -> form -> action_form -> action_form -> formr.
+    | until : form -> form -> action_form -> action_form -> formr.
+
 
 
 
@@ -133,7 +124,6 @@ Fixpoint sat (f : form) (s : state)  : Prop :=
 with satr (f : formr) (r : run) : Prop :=
     match f with 
     | until f1 f2 chi chi' =>  sat f1 (headState r)  /\  Until (sat f1) (sat f2) chi chi' r
-    | unless f1 f2 chi chi' => sat f1 (headState r)  /\  Unless (sat f1) (sat f2) chi chi' r
     end.
 
 End Def.
@@ -149,11 +139,8 @@ Notation "f ∨ f'" := (or f f')(at level 20).
 Notation "f → f'" := (imp f f')(at level 30).
 
 Notation "f [ chi ]  'U'  [ chi' ] f'" := (until f f' chi chi')(at level 50).
-Notation "f [ chi ]  'W'  [ chi' ] f'" := (unless f f' chi chi')(at level 50).
 Notation "f 'U' f'" := (f [any] U [any] f')(at level 50).
-Notation "f 'W' f'" := (f  [any] W [any] f')(at level 50).
 Notation "[ chi ]  'U'  [ chi' ] f'" := (⊤ [chi] U [chi'] f')(at level 50).
-Notation "[ chi ]  'W'  [ chi' ] f'" := (⊤ [chi] W [chi'] f')(at level 50).
 
 Notation "'E' p" := (exist p)(at level 50).
 Notation "'A' p" := (all p)(at level 50).
@@ -161,8 +148,7 @@ Notation "'EX' [ chi ] f" := (E (⊤ [non] U [chi] f))(at level 50, chi at level
 Notation "'AX' [ chi ] f" := (A (⊤ [non] U [chi] f))(at level 50, chi at level 5).
 Notation "'EF' [ chi ] f" := (E (⊤ [any] U [chi] f))(at level 50, chi at level 5).
 Notation "'AF' [ chi ] f" := (A (⊤ [any] U [chi] f))(at level 50, chi at level 5).
-Notation "'EG' [ chi ] f" := (E (f [chi] W [non] ⊥))(at level 50, chi at level 5).
-Notation "'AG' [ chi ] f" := (A (f [chi] W [non] ⊥))(at level 50, chi at level 5).
+
 
 
 End ACTL.
@@ -356,29 +342,37 @@ Proof.
 Qed.
 
 
-Theorem AU_ind  f g h :
-    |= (g ∨ (f ∧ AX h)) → h -> |= (f AU g) → h.
+
+Theorem AU_ind f g h :
+    |= g → h -> (|= f → ((AX h) → h)) -> |= (f AU g) → h.
 Proof.
-    satisfy; intros H s H'. 
-    apply H; clear H.
-    induction H';  [left|right]; auto.
-    induction H; split; auto.
-    intro F; apply H0; clear H0. 
-    induction F as [r [Hr [_ HU]]].
-    exists r; repeat split; auto; subst.
-    destruct r,p; inversion_clear HU; simpl in *; subst. 
-    +   constructor; auto; simpl.
-        apply ex_not_not_all.
-        exists (Run s' (nilp s' tau s' (tau_refl s'))); simpl.
-        intro F.
-        specialize (F (eq_refl s')).
-        induction F.
-        inversion H3; simpl in *.
-Admitted.        
+    satisfy; intros IH IH' s H.
+    induction H; eauto.
+    induction H.
+    apply (IH' s H); clear IH'.
+    intro F; apply H0; clear H0.
+    induction F as [r [Hr [_ HU]]].    
+    induction HU; simpl in *; subst.
+    -   exists r; repeat split; auto.
+        constructor; auto; intro F.
+        specialize (F 
+            (Run (nextState r) (nilp (nextState r) tau (nextState r) (tau_refl (nextState r))))
+            (eq_refl (nextState r))
+        ); simpl in F; induction F.
+        inversion H3; simpl in *; auto.
+    -   rewrite tau_eq in H0; symmetry in H0; auto.
+Qed.  
 
-
-
-
+Theorem EU_ind f g h :
+    |= g → h -> (|= f → ((EX h) → h)) -> |= (f EU g) → h.
+Proof.
+Abort.
+            
+Theorem AU_intro f g :
+    |= g →  (f AU g).
+Proof.
+    satisfy; intros s H; left; auto.
+Qed.
 
     
 
