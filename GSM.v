@@ -1,6 +1,9 @@
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
-From mathcomp Require Export all_ssreflect.
+From mathcomp Require Export finset fintype ssrbool eqtype ssrnat fintype ssreflect.
+
+
+
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -97,6 +100,7 @@ Instance etaState : Settable state :=
         < Scomitee;Ssubstate >.
 
 
+
 Coercion nat_of_admin a := let : Adm n := a in n.
 Canonical admin_subType  := [newType for nat_of_admin ].
 Definition admin_eqMixin := Eval hnf in [eqMixin of admin by <:].
@@ -147,4 +151,7 @@ Definition trans s a s' : Prop :=
     | act_var p => valuation s p /\ s = s'    
     | tau => s = s'
     end.
-    End GSM.
+
+End GSM.
+
+

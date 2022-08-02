@@ -1,4 +1,5 @@
-Require Import GSM_.
+Require Export GSM.
+From mathcomp Require Import all_ssreflect.
 
 Context {limit_time' : nat}.
 Context {Now : @timestamp limit_time'}.
@@ -13,8 +14,9 @@ Notation Admin := admin.
 
 Inductive Proposal  : Type :=
     (* 国庫・予算の入出金 *)
-    | withdrawBudget : Admin -> currency -> Proposal 
-    | depositBudget : Admin -> currency -> Proposal 
+    | withdraw : Admin -> currency -> Proposal 
+    | deposit : Admin -> currency -> Proposal 
+    | transfer : Admin -> Admin -> currency -> Proposal
     (* 役職への任免・罷免 *)
     | assignMember : Admin -> Citizen -> Proposal
     | dismissalMember : Admin -> Citizen -> Proposal    
@@ -31,14 +33,15 @@ Inductive Var :=
     | hasNoTenureWoker : Admin -> Var
     | hasNoMember : Admin -> Var
     (* 行政機関が熟議できる提案の制約 *)
-    | budgetRestriction : Admin -> Var
-    | assignRestriction : Admin -> Var
-    | adminControlRestriction : Admin -> Var
+    | isBudgetRestricted : Admin -> Var
+    | isTransferRestricted : Admin -> Var
+    | isAssignmentRestrected : Admin -> Admin -> Var
+    | isAdminControlRestricted : Admin -> Var
     (* その他 *)
     | isAssigned : Admin -> Citizen -> Var
     | isProposed : Admin -> Proposal -> Var 
     | isTenureWorker : Admin -> Citizen -> Var
-    | withinExpiration : Admin -> Citizen-> Var.
+    | isWithinExpiration : Admin -> Citizen-> Var.
 
  Context {prop_dec : forall x y : Proposal, {x = y} + {x <> y}}.   
   
@@ -72,35 +75,43 @@ Definition findExpiration (p : {set Citizen * Timestamp}) (c : Citizen) : option
 
 Definition transp  (x : State) (p : Proposal) : state :=
     match p with 
-    | withdrawBudget t n => 
-        let ss := Ssubstate x t in 
-        match ss with 
+    | withdraw t n => 
+        match Ssubstate x t with
         | None => x 
         | Some ss => 
             let ss' := ss <|SSbudget ::= minusc n|> in 
             x <| Ssubstate ::= t ↦ ss'|>  
         end 
-    | depositBudget t n => 
-        let ss := Ssubstate x t in 
-        match ss with 
+    | deposit t n => 
+        match Ssubstate x t with
         | None => x 
         | Some ss =>  
             let ss' := ss <|SSbudget ::= plusc n|> in 
             x <| Ssubstate ::= t ↦ ss'|>  
-        end    
+        end
+    
+    | transfer from to n => 
+            let ss_from := Ssubstate x from in 
+            let ss_to := Ssubstate x to in 
+            match ss_from, ss_to with 
+            | Some ss_from, Some ss_to => 
+                let ss_from' := ss_from <|SSbudget ::= minusc n|> in 
+                let ss_to' := ss_to <|SSbudget ::= plusc n|> in 
+                x <| Ssubstate ::= from ↦ ss_from'|> <|Ssubstate ::= to ↦ ss_to'|>
+            | _,_ => x
+            end
+
 
    
     | assignMember t m => 
-        let ss := Ssubstate x t in 
-        match ss with 
+        match Ssubstate x t with
         | None => x 
         | Some ss =>  
             let ss' := ss <| SSmember ::= fun mem => m |: mem |> in
             x <| Ssubstate ::= t ↦ ss'|>   
         end  
     | dismissalMember t m => 
-        let ss := Ssubstate x t in 
-        match ss with 
+        match Ssubstate x t with
         | None => x 
         | Some ss =>  
             let ss' := ss <| SSmember ::= fun mem => mem :\ m |> in
@@ -108,19 +119,16 @@ Definition transp  (x : State) (p : Proposal) : state :=
         end
 
 
-    | assignTenureWorker t m n =>
-        let tw := (m,n) in 
-        let ss := Ssubstate x t in 
-        match ss with 
+    | assignTenureWorker t m n =>        
+        match Ssubstate x t with
         | None => x 
         | Some ss =>  
             let tws := SStenureWorker ss in 
-            x  <| Ssubstate ::= t ↦ (ss <|SStenureWorker := tw |: tws|>) |>
+            x  <| Ssubstate ::= t ↦ (ss <|SStenureWorker := (m,n) |: tws|>) |>
         end
 
     | dismissalTenureWorker t m => 
-        let ss := Ssubstate x t in 
-        match ss with 
+        match Ssubstate x t with
         | None => x 
         | Some ss =>  
             let tws := SStenureWorker ss in 
@@ -131,14 +139,12 @@ Definition transp  (x : State) (p : Proposal) : state :=
             end
         end
     | genAdmin t => 
-        let ss := Ssubstate x t in 
-        match ss with 
+        match Ssubstate x t with
         | None => x <|Ssubstate ::= t ↦ empty_subState|>
         | Some _ => x        
         end
     | slashAdmin t =>
-        let ss := Ssubstate x t in 
-        match ss with 
+        match Ssubstate x t with
         | None => x 
         | Some _ => x <|Ssubstate ::= fun f => fun t' => if t' == t then None else f t'|>
         end
@@ -174,7 +180,7 @@ Definition valuation (s : State) (x : Var) : Prop :=
         | Some ss => SSmember ss = set0
         end
 
-    | budgetRestriction t =>
+    | isBudgetRestricted t =>
             let ss := Ssubstate s t in
             match ss with 
             | None => True 
@@ -183,14 +189,29 @@ Definition valuation (s : State) (x : Var) : Prop :=
                 | None => True 
                 | Some dlb' => let prp := Dproposal dlb' in
                     match prp with 
-                    | withdrawBudget t' _ => t = t' 
-                    | depositBudget t'  _ => t = t'  
+                    | withdraw t' _ => t = t' 
+                    | deposit t'  _ => t = t'
                     | _ => True
                     end
                 end
             end
+    
+    | isTransferRestricted t =>
+            let ss := Ssubstate s t in
+            match ss with 
+            | None => True 
+            | Some ss => let dlb := SScomitee ss
+                in match dlb with 
+                | None => True 
+                | Some dlb' => let prp := Dproposal dlb' in
+                    match prp with 
+                    | transfer t' _ _ => t = t'  
+                    | _ => True
+                    end
+                end
+            end            
 
-    | assignRestriction t => 
+    | isAssignmentRestrected t t'=> 
         let ss := Ssubstate s t in
             match ss with 
             | None => True 
@@ -199,16 +220,16 @@ Definition valuation (s : State) (x : Var) : Prop :=
                 | None => True 
                 | Some dlb' => let prp := Dproposal dlb' in
                     match prp with 
-                    | assignMember  _ _ => False
-                    | dismissalMember  _ _ => False
-                    | assignTenureWorker  _ _ _ => False
-                    | dismissalTenureWorker  _ _ => False
+                    | assignMember  t'' _ => t' <> t''
+                    | dismissalMember  t'' _ => t' <> t''
+                    | assignTenureWorker  t'' _ _ => t' <> t''
+                    | dismissalTenureWorker  t'' _ => t' <> t''
                     | _ => True
                     end
                 end
             end
 
-    | adminControlRestriction t => 
+    | isAdminControlRestricted t => 
         let ss := Ssubstate s t in
             match ss with 
             | None => True 
@@ -227,15 +248,16 @@ Definition valuation (s : State) (x : Var) : Prop :=
     | isAssigned a m => 
         let ss := Ssubstate s a in
         match ss with 
-        | None => True
+        | None => False
         | Some ss =>
             let mem := SSmember ss in         
             m \in mem
         end
+
     | isProposed adm a => 
         let ss := Ssubstate s adm in
         match ss with 
-        | None => True
+        | None => False
         | Some ss =>
             let dlb_ := SScomitee ss in
             match dlb_ with 
@@ -244,10 +266,11 @@ Definition valuation (s : State) (x : Var) : Prop :=
             | None => False
             end
         end 
+
     | isTenureWorker t m  =>
         let ss := Ssubstate s t in
         match ss with 
-        | None => True
+        | None => False
         | Some ss =>
             let tws := SStenureWorker ss in 
             let n := findExpiration tws m in
@@ -256,10 +279,11 @@ Definition valuation (s : State) (x : Var) : Prop :=
             | _ => False
             end
         end
-    | withinExpiration t m => 
+
+    | isWithinExpiration t m => 
         let ss := Ssubstate s t in
         match ss with 
-        | None => True
+        | None => False
         | Some ss =>
             let tws := SStenureWorker ss in 
             let tw := findExpiration tws m in
@@ -273,3 +297,22 @@ Definition valuation (s : State) (x : Var) : Prop :=
 
 Notation Trans := (@trans limit_time' Citizen random_choice random_choice_set Proposal Var evalD transp valuation).
 Notation Actioin := (@action Proposal Var).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

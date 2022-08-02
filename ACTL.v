@@ -5,14 +5,14 @@ Require Import Coq.Setoids.Setoid.
 Section Def.
 
 
-Context {state action : Set} {trans : state -> action -> state -> Prop}
+Context {state action : Type} {trans : state -> action -> state -> Prop}
         {tau : action} {tau_eq : forall  s s', trans s tau s' <->  s = s'}.
 
      
 
 (******************** path ********************)
 
-CoInductive path : state -> Set :=
+CoInductive path : state -> Type :=
     | nilp s a s' : trans s a s' -> path s
     | consp s a s' : trans s a s' -> path s' -> path s.
 
@@ -372,3 +372,7 @@ Proof.
 Qed.
 
 End theorems.
+
+
+
+
