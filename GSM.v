@@ -3,63 +3,109 @@ Export RecordSetNotations.
 From mathcomp Require Export finset fintype ssrbool eqtype ssrnat fintype ssreflect.
 
 
-
 Set Implicit Arguments.
 Unset Strict Implicit.
 
-Section GSM.
-
-
-(******************** アクション・状態 ********************)
-
 
 Definition currency := nat.
-Context {citizen : finType}.
-Context {admin : finType}.
-Context {proposal : Type}.
-Context {var : Type}.
+
+Record ENV := {
+    citizen : finType;
+    admin : finType;
+    proposal : Type;
+    var : Type;
+    
+}.
+
+    
+Section action.
+
+
+Context {env : ENV}.
+
+Notation citizen := (citizen env).
+Notation admin := (admin env).
+Notation proposal := (proposal env).
+Notation var := (var env).
 
 Variant action :=
-    | act_deliberate : admin -> proposal -> {set citizen} -> action
+    | act_propose : admin -> proposal -> {set citizen} -> action
+    | act_deliberate : admin -> action
     | act_var : var -> action
     | tau : action.
 
-Record substate := Substate {
-    budget : currency;
-    member : {set citizen};
+Record comitee := Comitee {
+    proposalC : proposal;
+    memberC : {set citizen};
 }.
 
+
+Record substate := Substate {
+    budgetSS : currency;
+    memberSS : {set citizen};
+    comiteeSS : option comitee;
+}.
+    
 Definition state := admin -> option substate.            
+        
+Definition empty_subState := Substate 0 set0 None.
 
-Definition empty_subState := Substate 0 set0.
+#[local] Instance EtaSubtate : Settable substate :=
+    settable! Substate  <budgetSS; memberSS; comiteeSS>.
 
 
 
-(******************** 状態遷移 ********************)
+Record Eval := {
+    deliberate : comitee -> state -> bool;
+    transp : state -> proposal -> state;
+    valuation : state -> var -> Prop;
+}.
+
+Section Eval.
+
+Context {eval : Eval}.
+
+Notation Deliberate := (deliberate eval).
+Notation Transp := (transp eval).
+Notation Valuation := (valuation eval).
+
+Definition subst {dom : eqType} {ran} (d : dom) (r : ran) := 
+    fun f => fun d' =>  if d == d' then Some r else (f d').
+
+Notation "t ↦ b" := (subst t b)(at level 10).
 
 
-Context {deliberate : proposal -> {set citizen} -> bool}.
-Context {transp : state -> proposal -> state}.
-Context {valuation : state -> var -> Prop}.
 
 Definition trans s a s' : Prop :=
     match a with 
-    | act_deliberate adm prp cmt => 
+    | act_propose adm prp cmt => 
         let ss := s adm in
         match ss with 
             | None =>  s = s'
             | Some ss' =>  
-                let mem := member ss' in 
-                if cmt \subset mem 
-                    then if deliberate prp cmt
-                        then s' = transp s prp
-                        else s = s'
-                    else s = s'
+                let ss'' := ss' <|comiteeSS := Some (Comitee prp cmt)|> in 
+                s' = (adm ↦ ss'') s
             end
-    | act_var p => valuation s p /\ s = s'    
+    | act_deliberate adm => 
+        let ss := s adm in
+        match ss with 
+            | None =>  s = s'
+            | Some ss' =>  
+                match comiteeSS ss' with 
+                | None => s = s' 
+                | Some cmt =>  
+                    if (memberC cmt) \subset (memberSS ss')
+                        then if Deliberate cmt s
+                            then s' = Transp s (proposalC cmt)
+                            else s = s'
+                        else s = s'
+                end
+            end
+    | act_var p => Valuation s p /\ s = s'    
     | tau => s = s'
     end.
 
-End GSM.
+End Eval.
+End action.
 
 

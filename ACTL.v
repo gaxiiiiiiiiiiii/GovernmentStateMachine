@@ -2,12 +2,33 @@
 Require Export Classical.
 Require Import Coq.Setoids.Setoid.
 
+
+
+
+Record LTS := {
+    state : Type;
+    action : Type;
+    trans : state -> action -> state -> Prop;
+    tau : action;
+    tau_eq : forall s s', trans s tau s' <-> s = s';
+}.
+
+Arguments state {lts} : rename.
+Arguments action {lts} : rename.
+Arguments trans {lts} : rename.
+Arguments tau {lts} : rename.
+Arguments tau_eq {lts} : rename.
+
+
 Section Def.
 
+Context {lts : LTS}.
 
-Context {state action : Type} {trans : state -> action -> state -> Prop}
-        {tau : action} {tau_eq : forall  s s', trans s tau s' <->  s = s'}.
-
+Notation state := (@state lts).
+Notation action := (@action lts).
+Notation trans := (@trans lts).
+Notation tau := (@tau lts).
+Notation tau_eq := (@tau_eq lts).
      
 
 (******************** path ********************)
@@ -33,12 +54,6 @@ Definition nextState (r : run) : state :=
 
 
 
-
-
-Definition pathOf (r : run) : match r with Run s _ => path s end :=
-    match r with 
-    | Run s p => p
-    end.
 
 Definition headAction (r : run) : action :=
     match r with 
@@ -125,9 +140,15 @@ with satr (f : formr) (r : run) : Prop :=
     | until f1 f2 chi chi' =>  sat f1 (headState r)  /\  Until (sat f1) (sat f2) chi chi' r
     end.
 
-End Def.
+End Def.    
+
+
 
 (******************** derived operation ********************)
+
+
+
+
 
 
 Notation "⊤" := top.
@@ -150,17 +171,7 @@ Notation "'AF' [ chi ] f" := (A (⊤ [any] U [chi] f))(at level 50, chi at level
 
 
 
-
-
-
-
-Section theorems.
-
-Context {state action : Set} {trans : state -> action -> state -> Prop}
-        {tau : action} {tau_eq : forall  s s', trans s tau s' <->  s = s'}.
-
-
-Notation "s |= f" := (@sat state action trans f s)(at level 80).
+Notation "s |= f" := (sat f s)(at level 80).
 Notation "|= f" := (forall s, s |= f)(at level 80).
 Notation τ := (action_ tau).
 Notation "< chi > f" := (E (⊤ [τ] U [chi] f))(at level 50, chi at level 5).
@@ -178,14 +189,33 @@ Notation "f 'EW' f'" := (¬ ((¬ f') AU ((¬ f) ∧ (¬ f'))))(at level 50).
 Notation "f 'AW' f'" := (¬ ((¬ f') EU ((¬ f) ∧ (¬ f'))))(at level 50).
 
 
-Theorem tau_refl s :
+Section theorems.
+
+Variable (lts : LTS).
+Local Notation Form := (@form lts).
+Local Notation State := (@state lts).
+Local Notation Action_form := (@action_form lts).
+Variable f f' g h : Form.
+
+
+
+Theorem tau_refl (s : State) :
     trans s tau s.
 Proof.
     apply tau_eq; auto.
-Qed.   
+Qed.
 
 
-Theorem dia_spec f s chi:
+Section spec.
+
+Variable s: State.
+Variable chi : Action_form.
+
+
+ 
+
+
+Theorem dia_spec :
     s |= <chi> f <-> 
     exists a s', sata a chi /\ trans s a s' /\ s' |= f.
 Proof.
@@ -211,9 +241,9 @@ Qed.
 
 
 
-Theorem box_spec f s chi :  
+Theorem box_spec:  
     s |= [chi] f <->
-    forall r : run (trans := trans),
+    forall r : run ,
         headState r = s ->
         sata (headAction r) chi -> 
         trans (headState r) (headAction r) (nextState r) -> 
@@ -235,20 +265,22 @@ Proof.
                 try (apply H1; clear H1; apply H; auto; destruct r, p; auto);
                 try (assert (s = s') by (apply tau_eq; auto); subst s'; auto).
             apply (H r ); auto; destruct r, p; auto.
-Qed.   
+Qed.
 
-Inductive belong : run (trans := trans) -> state -> Prop :=
+
+Inductive belong : run  -> @state lts -> Prop :=
     | belong_here r s : headState r = s -> belong r s 
     | belong_next r s : nextState r = s -> belong r s 
     | belong_there s a s' H p s'': 
         belong (Run s' p) s'' -> belong (Run s (consp s a s' H p)) s''.
 
-Theorem EF_spec f s :
+Theorem EF_spec :
     s |= EF f <-> 
-        exists (r : run (trans := trans)) s', 
+        exists (r : run) s', 
             headState r = s /\ belong r s' /\ s' |= f.
 Proof.
-    split; unfold sat; intro; fold (sat (trans := trans)) in *.
+    unfold sat; fold (@sat lts).
+    split; unfold sat; intro; fold (@sat lts) in *.
     +   induction H; auto.
         *   exists (Run s  (nilp s tau s (tau_refl s))), s; 
             repeat split; try constructor; auto.
@@ -276,12 +308,12 @@ Proof.
 Qed. 
 
 
-Theorem AF_spec f s :
+Theorem AF_spec :
     s |= AF f <->
         (forall r, headState r = s ->
         (exists s', belong r s' /\ s' |= f)).
 Proof.
-    split; unfold sat; intro; fold (sat (trans := trans)) in *.
+    split; unfold sat; intro; fold (@sat lts) in *.
     +   intros r Hr.
         induction H.
         -   exists s; split; auto; constructor; auto.
@@ -298,10 +330,12 @@ Proof.
         inversion Hs; subst; auto.
 Qed.    
 
-Theorem axiomK f f' :
+End spec.
+
+Theorem axiomK :
     |= (AX (f → f')) → ((AX f) → (AX f')).
 Proof.
-    unfold sat; intros; fold (sat (trans := trans)) in *.
+    unfold sat; intros; fold (@sat lts) in *.
     intro F; induction F as [r [Hr [_ HU]]].
     induction HU.
     +   apply H0; exists r; repeat split; auto.
@@ -312,10 +346,10 @@ Proof.
         apply IHHU; symmetry; apply tau_eq; auto.
 Qed.  
 
-Theorem axiomAXEX f :
+Theorem axiomAXEX :
     |= (AX f) → (EX f).
 Proof.
-    unfold sat; intros s H; fold (sat (trans := trans)) in *.
+    unfold sat; intros s H; fold (@sat lts) in *.
     remember (Run s (nilp s tau s (tau_refl s))).
     apply not_ex_all_not with (n := r) in H.
     apply not_and_or in H.
@@ -327,9 +361,9 @@ Proof.
         exists r; subst; repeat split; constructor; unfold sata; auto.
 Qed.        
 
-Ltac  satisfy := unfold sat; fold (sat (trans := trans)).
+Ltac  satisfy := unfold sat; fold (@sat lts).
 
-Theorem axiomAX f :
+Theorem axiomAX :
     |= f -> |= AX f.
 Proof.
     satisfy; intros H s F.
@@ -340,7 +374,7 @@ Qed.
 
 
 
-Theorem AU_ind f g h :
+Theorem AU_ind :
     |= g → h -> (|= f → ((AX h) → h)) -> |= (f AU g) → h.
 Proof.
     satisfy; intros IH IH' s H.
@@ -360,19 +394,15 @@ Proof.
     -   rewrite tau_eq in H0; symmetry in H0; auto.
 Qed.  
 
-Theorem EU_ind f g h :
+Theorem EU_ind :
     |= g → h -> (|= f → ((EX h) → h)) -> |= (f EU g) → h.
 Proof.
 Abort.
             
-Theorem AU_intro f g :
+Theorem AU_intro :
     |= g →  (f AU g).
 Proof.
     satisfy; intros s H; left; auto.
 Qed.
 
 End theorems.
-
-
-
-
